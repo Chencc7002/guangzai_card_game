@@ -216,6 +216,12 @@ button:disabled {
   line-height: 1.15;
 }
 
+.section-head > span {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .section-head select,
 .section-head .secondary {
   min-width: 0;
@@ -597,6 +603,128 @@ button:disabled {
 .rarity-glow-legend { box-shadow: 0 0 56px rgba(245,193,93,0.9); }
 .rarity-glow-hidden { box-shadow: 0 0 64px rgba(239,111,108,0.95); }
 
+.hand-area {
+  position: relative;
+  z-index: 2;
+  margin-top: 18px;
+  border: 1px solid rgba(104, 216, 214, 0.36);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(16, 19, 31, 0.72);
+  text-align: left;
+}
+
+.hand-area .section-head h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.hand-grid,
+.settled-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+
+.hand-card {
+  position: relative;
+  min-height: 184px;
+  padding-top: 34px;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.hand-card.selected {
+  transform: translateY(-4px);
+  border-color: rgba(245, 193, 93, 0.95);
+  box-shadow: 0 0 0 2px rgba(245, 193, 93, 0.28), 0 18px 34px rgba(0, 0, 0, 0.28);
+}
+
+.hand-card.selected::after {
+  content: "已选择";
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #1f1608;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--gold);
+}
+
+.point-badge {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid rgba(245, 193, 93, 0.76);
+  border-radius: 8px;
+  color: #1f1608;
+  font-size: 16px;
+  font-weight: 900;
+  background: linear-gradient(180deg, #fff0ad, #f5b944);
+  box-shadow: 0 0 16px rgba(245, 193, 93, 0.28);
+}
+
+.pack-result {
+  display: grid;
+  gap: 12px;
+}
+
+.settled-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settled-grid .card {
+  position: relative;
+  min-height: 176px;
+  padding-top: 34px;
+}
+
+.abandoned-card,
+.twenty-four-result {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(36, 43, 64, 0.72);
+}
+
+.abandoned-card {
+  display: grid;
+  gap: 4px;
+}
+
+.abandoned-card span {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.abandoned-card small {
+  color: var(--muted);
+}
+
+.twenty-four-result {
+  border-color: rgba(104, 216, 214, 0.45);
+}
+
+.twenty-four-result.success {
+  border-color: rgba(245, 193, 93, 0.78);
+  background: rgba(245, 193, 93, 0.1);
+}
+
+.twenty-four-result strong {
+  color: var(--gold);
+}
+
+.twenty-four-result p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
 .event-panel {
   margin-bottom: 12px;
   border: 1px solid rgba(245, 193, 93, 0.36);
@@ -749,6 +877,11 @@ button:disabled {
   background: rgba(120, 211, 127, 0.1);
 }
 
+.combo-row.mystery {
+  border-color: rgba(104, 216, 214, 0.32);
+  background: rgba(104, 216, 214, 0.08);
+}
+
 .task-row strong,
 .series-row strong {
   display: block;
@@ -778,6 +911,38 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.game-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+
+.game-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.game-tab {
+  flex: 0 0 auto;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: rgba(36, 43, 64, 0.82);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.game-tab.active {
+  border-color: rgba(245, 193, 93, 0.76);
+  color: #201607;
+  background: var(--gold);
 }
 
 .page-action {
@@ -870,12 +1035,37 @@ button:disabled {
   filter: grayscale(1);
 }
 
+.card.locked.exchange-card {
+  border-color: rgba(104, 216, 214, 0.28);
+  background:
+    linear-gradient(145deg, rgba(104,216,214,0.08), transparent 34%),
+    #1a1d27;
+  filter: none;
+}
+
+.exchange-card .locked-card-back {
+  flex: 0 0 38%;
+  min-height: 82px;
+}
+
+.exchange-owned {
+  opacity: 0.72;
+}
+
 .card-action {
   flex: 0 0 auto;
   width: 100%;
   margin-top: 8px;
   min-height: 34px;
   font-size: 12px;
+}
+
+.locked-price {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .card-art {
@@ -1521,8 +1711,8 @@ button:disabled {
   left: 50%;
   bottom: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
   width: min(100%, 460px);
   padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
@@ -1534,9 +1724,9 @@ button:disabled {
   width: 100%;
   min-width: 0;
   min-height: 48px;
-  padding: 0 8px;
+  padding: 0 6px;
   white-space: nowrap;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
 }
 

@@ -64,9 +64,17 @@
               </div>
             </div>
             <h3>记忆晶核</h3>
-            <p class="pack-copy">每次开启都会拾起一个游戏名场面。重复卡会自动转化为碎片。</p>
-            <button id="drawBtn" class="primary large">开包</button>
-            <p class="hint">抽满 3 包、完成分享跳转、收集新卡都能获得额外奖励。</p>
+            <p class="pack-copy">每次开启会出现 4 张名场面卡，每张随机获得 1-13 临时点数。选四张中的 3 张入库，凑出 24 可额外获得 1 次抽卡。</p>
+            <button id="drawBtn" class="primary large">开启记忆晶核</button>
+            <p class="hint">被放弃的第 4 张不会入库，也不会转化碎片。</p>
+            <div id="handArea" class="hand-area hidden">
+              <div class="section-head compact">
+                <h3>四选三手牌</h3>
+                <span id="handCounter">0/3</span>
+              </div>
+              <div id="handGrid" class="hand-grid"></div>
+              <button id="confirmSelectionBtn" class="primary" disabled>确认选择</button>
+            </div>
           </div>
           <div class="goal-panel">
             <div class="section-head compact">
@@ -77,20 +85,37 @@
           </div>
           <div class="goal-panel">
             <div class="section-head compact">
-              <h3>系列收集</h3>
-              <span>集齐奖励 2 抽 + 30 碎片</span>
+              <h3>彩蛋发现</h3>
+              <span id="comboProgress">0/0</span>
             </div>
-            <div id="seriesList" class="series-list"></div>
+            <div id="comboList" class="series-list combo-list"></div>
           </div>
         </section>
 
         <section id="albumPage" class="page">
           <div class="section-head">
             <h3>卡册</h3>
-            <select id="albumSeries"></select>
+            <span id="albumProgress">0/0</span>
           </div>
+          <div id="albumGameTabs" class="game-tabs"></div>
           <div id="cardGrid" class="card-grid"></div>
+          <div class="goal-panel album-combo-panel">
+            <div class="section-head compact">
+              <h3>已触发彩蛋</h3>
+              <span id="albumComboProgress">0/0</span>
+            </div>
+            <div id="albumComboList" class="series-list combo-list"></div>
+          </div>
           <button id="albumInviteBtn" class="secondary page-action">邀请好友来玩</button>
+        </section>
+
+        <section id="exchangePage" class="page">
+          <div class="section-head">
+            <h3>兑换</h3>
+            <span><b id="exchangeFragments">0</b> 碎片</span>
+          </div>
+          <div id="exchangeGameTabs" class="game-tabs"></div>
+          <div id="exchangeGrid" class="card-grid"></div>
         </section>
 
         <section id="rankPage" class="page">
@@ -104,6 +129,7 @@
         <nav class="tabs">
           <button class="tab active" data-page="homePage">开包</button>
           <button class="tab" data-page="albumPage" data-tour="album">卡册</button>
+          <button class="tab" data-page="exchangePage" data-tour="exchange">兑换</button>
           <button class="tab" data-page="rankPage" data-tour="rank">排行</button>
         </nav>
       </section>
