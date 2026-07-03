@@ -311,10 +311,10 @@ async function claimPendingShare() {
 }
 
 function cardFace(card, owned = true) {
-  if (card.id === "c001" && owned) {
+  if (owned && card.image) {
     return `
-      <div class="special-card-face image-card-face">
-        <img src="./assets/cards/sixue-fansha.png" alt="丝血反杀卡面" />
+      <div class="image-card-face">
+        <img src="${card.image}" alt="${card.name}卡面" />
       </div>
     `;
   }

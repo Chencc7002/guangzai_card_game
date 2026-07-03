@@ -41,11 +41,15 @@ create table if not exists cards (
   fragment integer not null default 0,
   price integer not null default 0,
   quote text not null,
+  image text not null default '',
   is_placeholder boolean not null default false,
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table cards
+  add column if not exists image text not null default '';
 
 create table if not exists sessions (
   token text primary key,

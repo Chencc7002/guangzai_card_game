@@ -1,0 +1,141 @@
+[
+  {
+    "id": "c001",
+    "name": "丝血反杀",
+    "game": "待定游戏 IP 04",
+    "theme": "既有卡牌",
+    "rarity": "legend",
+    "quote": "这波不亏，直接起飞！",
+    "image": "./assets/cards/sixue-fansha.png"
+  },
+  {
+    "id": "c002",
+    "name": "人体描边",
+    "game": "和平精英",
+    "theme": "彩蛋示例",
+    "rarity": "normal",
+    "quote": "每一枪都很真诚，只是敌人不配合。"
+  },
+  {
+    "id": "c003",
+    "name": "伏地魔的胜利",
+    "game": "和平精英",
+    "theme": "彩蛋示例",
+    "rarity": "normal",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c004",
+    "name": "信号枪骗局",
+    "game": "和平精英",
+    "theme": "彩蛋示例",
+    "rarity": "rare",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c005",
+    "name": "闪现撞墙",
+    "game": "英雄联盟手游",
+    "theme": "彩蛋示例",
+    "rarity": "normal",
+    "quote": "不是墙太硬，是梦想太近。"
+  },
+  {
+    "id": "c006",
+    "name": "0-21 的亚索",
+    "game": "英雄联盟手游",
+    "theme": "彩蛋示例",
+    "rarity": "rare",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c007",
+    "name": "盲僧 R 闪失败",
+    "game": "英雄联盟手游",
+    "theme": "彩蛋示例",
+    "rarity": "epic",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c008",
+    "name": "老八出局",
+    "game": "金铲铲之战",
+    "theme": "彩蛋示例",
+    "rarity": "normal",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c009",
+    "name": "空城连败",
+    "game": "金铲铲之战",
+    "theme": "彩蛋示例",
+    "rarity": "rare",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c010",
+    "name": "D 牌上头",
+    "game": "金铲铲之战",
+    "theme": "彩蛋示例",
+    "rarity": "epic",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c011",
+    "name": "非酋の自我修养",
+    "game": "通用社区梗",
+    "theme": "彩蛋示例",
+    "rarity": "rare",
+    "quote": "待文案策划补充梗评语。"
+  },
+  {
+    "id": "c012",
+    "name": "下次一定",
+    "game": "通用社区梗",
+    "theme": "彩蛋示例",
+    "rarity": "normal",
+    "quote": "最强承诺，最弱执行。"
+  },
+  { "id": "c013", "name": "待定卡牌 13", "game": "和平精英", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c014", "name": "待定卡牌 14", "game": "英雄联盟手游", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c015", "name": "待定卡牌 15", "game": "金铲铲之战", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c016", "name": "待定卡牌 16", "game": "待定游戏 IP 04", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c017", "name": "待定卡牌 17", "game": "待定游戏 IP 05", "theme": "待定主题", "rarity": "epic", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c018", "name": "待定卡牌 18", "game": "待定游戏 IP 06", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c019", "name": "待定卡牌 19", "game": "待定游戏 IP 07", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c020", "name": "待定卡牌 20", "game": "待定游戏 IP 08", "theme": "待定主题", "rarity": "legend", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c021", "name": "待定卡牌 21", "game": "待定游戏 IP 09", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c022", "name": "待定卡牌 22", "game": "待定游戏 IP 10", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c023", "name": "待定卡牌 23", "game": "通用社区梗", "theme": "待定主题", "rarity": "hidden", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c024", "name": "待定卡牌 24", "game": "和平精英", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c025", "name": "待定卡牌 25", "game": "英雄联盟手游", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c026", "name": "待定卡牌 26", "game": "金铲铲之战", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c027", "name": "待定卡牌 27", "game": "待定游戏 IP 04", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c028", "name": "待定卡牌 28", "game": "待定游戏 IP 05", "theme": "待定主题", "rarity": "epic", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c029", "name": "待定卡牌 29", "game": "待定游戏 IP 06", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c030", "name": "待定卡牌 30", "game": "待定游戏 IP 07", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c031", "name": "待定卡牌 31", "game": "待定游戏 IP 08", "theme": "待定主题", "rarity": "legend", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c032", "name": "待定卡牌 32", "game": "待定游戏 IP 09", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c033", "name": "待定卡牌 33", "game": "待定游戏 IP 10", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c034", "name": "待定卡牌 34", "game": "通用社区梗", "theme": "待定主题", "rarity": "hidden", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c035", "name": "待定卡牌 35", "game": "和平精英", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c036", "name": "待定卡牌 36", "game": "英雄联盟手游", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c037", "name": "待定卡牌 37", "game": "金铲铲之战", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c038", "name": "待定卡牌 38", "game": "待定游戏 IP 04", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c039", "name": "待定卡牌 39", "game": "待定游戏 IP 05", "theme": "待定主题", "rarity": "epic", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c040", "name": "待定卡牌 40", "game": "待定游戏 IP 06", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c041", "name": "待定卡牌 41", "game": "待定游戏 IP 07", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c042", "name": "待定卡牌 42", "game": "待定游戏 IP 08", "theme": "待定主题", "rarity": "legend", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c043", "name": "待定卡牌 43", "game": "待定游戏 IP 09", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c044", "name": "待定卡牌 44", "game": "待定游戏 IP 10", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c045", "name": "待定卡牌 45", "game": "通用社区梗", "theme": "待定主题", "rarity": "hidden", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c046", "name": "待定卡牌 46", "game": "和平精英", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c047", "name": "待定卡牌 47", "game": "英雄联盟手游", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c048", "name": "待定卡牌 48", "game": "金铲铲之战", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c049", "name": "待定卡牌 49", "game": "待定游戏 IP 04", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c050", "name": "待定卡牌 50", "game": "待定游戏 IP 05", "theme": "待定主题", "rarity": "epic", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c051", "name": "待定卡牌 51", "game": "待定游戏 IP 06", "theme": "待定主题", "rarity": "rare", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c052", "name": "待定卡牌 52", "game": "待定游戏 IP 07", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c053", "name": "待定卡牌 53", "game": "待定游戏 IP 08", "theme": "待定主题", "rarity": "legend", "quote": "待文案策划补充梗评语。", "isPlaceholder": true },
+  { "id": "c054", "name": "待定卡牌 54", "game": "待定游戏 IP 09", "theme": "待定主题", "rarity": "normal", "quote": "待文案策划补充梗评语。", "isPlaceholder": true }
+]

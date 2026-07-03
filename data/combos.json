@@ -1,0 +1,30 @@
+[
+  {
+    "id": "peace-grass-signal",
+    "name": "和平精英待定彩蛋",
+    "game": "和平精英",
+    "cardIds": ["c002", "c003", "c004"],
+    "reward": { "drawChances": 3 }
+  },
+  {
+    "id": "lol-reverse-highlight",
+    "name": "英雄联盟手游待定彩蛋",
+    "game": "英雄联盟手游",
+    "cardIds": ["c005", "c006", "c007"],
+    "reward": { "drawChances": 5 }
+  },
+  {
+    "id": "jcc-eighth-economy",
+    "name": "金铲铲之战待定彩蛋",
+    "game": "金铲铲之战",
+    "cardIds": ["c008", "c009", "c010"],
+    "reward": { "fragments": 4 }
+  },
+  {
+    "id": "community-luck-contract",
+    "name": "通用社区梗待定彩蛋",
+    "game": "通用社区梗",
+    "cardIds": ["c011", "c012"],
+    "reward": { "fragments": 2 }
+  }
+]

@@ -6,6 +6,9 @@ const crypto = require("crypto");
 const DB_FILE = path.join(__dirname, "db.json");
 const ROOT_DIR = path.resolve(__dirname, "..");
 const FRONTEND_DIR = path.join(ROOT_DIR, "frontend");
+const DATA_DIR = path.join(ROOT_DIR, "data");
+const CARDS_FILE = path.join(DATA_DIR, "cards.json");
+const COMBOS_FILE = path.join(DATA_DIR, "combos.json");
 loadEnv(path.join(ROOT_DIR, ".env"));
 loadEnv(path.join(__dirname, ".env"));
 const PORT = Number(process.env.PORT || 8787);
@@ -46,6 +49,8 @@ const packSubmitLocks = new Map();
 let mysqlPool = null;
 let redisClient = null;
 let redisReady = false;
+let mysqlCardSchemaReady = false;
+let mysqlCardSchemaPromise = null;
 let mysqlCardsSynced = false;
 let supabaseCardsSynced = false;
 const SCORE_MILESTONES = [
@@ -61,7 +66,8 @@ const PACK_MILESTONES = [
   { packs: 35, drawChances: 3, fragments: 40, text: "累计开包 35 次，返还 3 次抽卡 + 40 碎片" }
 ];
 
-const GAME_IPS = [
+const COMMUNITY_GROUP = "通用社区梗";
+const PREFERRED_CARD_GROUPS = [
   "和平精英",
   "英雄联盟手游",
   "金铲铲之战",
@@ -71,11 +77,9 @@ const GAME_IPS = [
   "待定游戏 IP 07",
   "待定游戏 IP 08",
   "待定游戏 IP 09",
-  "待定游戏 IP 10"
+  "待定游戏 IP 10",
+  COMMUNITY_GROUP
 ];
-const COMMUNITY_GROUP = "通用社区梗";
-const CARD_GROUPS = [...GAME_IPS, COMMUNITY_GROUP];
-const SERIES = CARD_GROUPS;
 const NPC_RANKING = [
   { nickname: "高光猎人", score: 680, collected: 12 },
   { nickname: "服务器守夜人", score: 520, collected: 10 },
@@ -91,52 +95,101 @@ const RARITIES = {
   hidden: { name: "隐藏款", weight: 0.5, score: 400, fragment: 80, price: 360 }
 };
 
-const KNOWN_CARD_DEFS = [
-  ["c001", "丝血反杀", "待定游戏 IP 04", "既有卡牌", "legend", "这波不亏，直接起飞！"],
-  ["c002", "人体描边", "和平精英", "彩蛋示例", "normal", "每一枪都很真诚，只是敌人不配合。"],
-  ["c003", "伏地魔的胜利", "和平精英", "彩蛋示例", "normal", "待文案策划补充梗评语。"],
-  ["c004", "信号枪骗局", "和平精英", "彩蛋示例", "rare", "待文案策划补充梗评语。"],
-  ["c005", "闪现撞墙", "英雄联盟手游", "彩蛋示例", "normal", "不是墙太硬，是梦想太近。"],
-  ["c006", "0-21 的亚索", "英雄联盟手游", "彩蛋示例", "rare", "待文案策划补充梗评语。"],
-  ["c007", "盲僧 R 闪失败", "英雄联盟手游", "彩蛋示例", "epic", "待文案策划补充梗评语。"],
-  ["c008", "老八出局", "金铲铲之战", "彩蛋示例", "normal", "待文案策划补充梗评语。"],
-  ["c009", "空城连败", "金铲铲之战", "彩蛋示例", "rare", "待文案策划补充梗评语。"],
-  ["c010", "D 牌上头", "金铲铲之战", "彩蛋示例", "epic", "待文案策划补充梗评语。"],
-  ["c011", "非酋の自我修养", "通用社区梗", "彩蛋示例", "rare", "待文案策划补充梗评语。"],
-  ["c012", "下次一定", "通用社区梗", "彩蛋示例", "normal", "最强承诺，最弱执行。"]
-];
-const PLACEHOLDER_RARITIES = ["normal", "normal", "rare", "normal", "epic", "rare", "normal", "legend", "normal", "rare", "hidden"];
-const PLACEHOLDER_CARD_DEFS = Array.from({ length: 42 }, (_, index) => {
-  const number = index + 13;
-  const idNumber = String(number).padStart(3, "0");
-  const displayNumber = String(number).padStart(2, "0");
-  const game = CARD_GROUPS[index % CARD_GROUPS.length];
-  const rarity = PLACEHOLDER_RARITIES[index % PLACEHOLDER_RARITIES.length];
-  return [`c${idNumber}`, `待定卡牌 ${displayNumber}`, game, "待定主题", rarity, "待文案策划补充梗评语。"];
-});
-const CARD_DEFS = [...KNOWN_CARD_DEFS, ...PLACEHOLDER_CARD_DEFS];
+function loadJsonFile(filePath, label) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(`${label} 读取失败：${error.message}`);
+  }
+}
 
-const CARDS = CARD_DEFS.map(([id, name, game, theme, rarity, quote]) => ({
-  id,
-  name,
-  game,
-  ip: game,
-  theme,
-  series: game,
-  rarity,
-  rarityName: RARITIES[rarity].name,
-  score: RARITIES[rarity].score,
-  fragment: RARITIES[rarity].fragment,
-  price: RARITIES[rarity].price,
-  quote
-}));
+function normalizeCardData(items) {
+  if (!Array.isArray(items)) throw new Error("cards.json 必须是数组");
+  if (items.length !== 54) throw new Error(`cards.json 必须维护 54 张卡牌，当前为 ${items.length} 张`);
+  const seen = new Set();
+  return items.map((item, index) => {
+    if (!isObject(item)) throw new Error(`cards.json 第 ${index + 1} 项必须是对象`);
+    const id = String(item.id || "").trim();
+    const name = String(item.name || "").trim();
+    const game = String(item.game || item.ip || "").trim();
+    const rarity = String(item.rarity || "").trim();
+    const rarityConfig = RARITIES[rarity];
+    if (!id || !/^c\d{3}$/i.test(id)) throw new Error(`cards.json 第 ${index + 1} 项 id 无效`);
+    if (seen.has(id)) throw new Error(`cards.json 存在重复卡牌 id：${id}`);
+    if (!name) throw new Error(`cards.json ${id} 缺少 name`);
+    if (!game) throw new Error(`cards.json ${id} 缺少 game`);
+    if (!rarityConfig) throw new Error(`cards.json ${id} 使用了未知稀有度：${rarity}`);
+    seen.add(id);
+    const sortOrder = Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : cardSortOrder({ id });
+    return {
+      id,
+      name,
+      game,
+      ip: String(item.ip || game).trim(),
+      theme: String(item.theme || "待定主题").trim(),
+      series: String(item.series || game).trim(),
+      rarity,
+      rarityName: String(item.rarityName || rarityConfig.name).trim(),
+      score: Number.isFinite(Number(item.score)) ? Number(item.score) : rarityConfig.score,
+      fragment: Number.isFinite(Number(item.fragment)) ? Number(item.fragment) : rarityConfig.fragment,
+      price: Number.isFinite(Number(item.price)) ? Number(item.price) : rarityConfig.price,
+      quote: String(item.quote || "待文案策划补充梗评语。").trim(),
+      image: String(item.image || "").trim(),
+      isPlaceholder: Boolean(item.isPlaceholder),
+      sortOrder
+    };
+  }).sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function normalizeComboData(items) {
+  if (!Array.isArray(items)) throw new Error("combos.json 必须是数组");
+  const cardIds = new Set(CARDS.map(card => card.id));
+  const seen = new Set();
+  return items.map((item, index) => {
+    if (!isObject(item)) throw new Error(`combos.json 第 ${index + 1} 项必须是对象`);
+    const id = String(item.id || "").trim();
+    const name = String(item.name || "").trim();
+    const game = String(item.game || COMMUNITY_GROUP).trim();
+    const comboCardIds = Array.isArray(item.cardIds) ? item.cardIds.map(value => String(value || "").trim()).filter(Boolean) : [];
+    const drawChances = Number(item.reward?.drawChances || 0);
+    const fragments = Number(item.reward?.fragments || 0);
+    if (!id) throw new Error(`combos.json 第 ${index + 1} 项缺少 id`);
+    if (seen.has(id)) throw new Error(`combos.json 存在重复组合 id：${id}`);
+    if (!name) throw new Error(`combos.json ${id} 缺少 name`);
+    if (!comboCardIds.length) throw new Error(`combos.json ${id} 缺少 cardIds`);
+    if (!Number.isFinite(drawChances) || !Number.isFinite(fragments)) throw new Error(`combos.json ${id} 奖励必须是数字`);
+    if (drawChances <= 0 && fragments <= 0) throw new Error(`combos.json ${id} 至少需要配置一项奖励`);
+    const missing = comboCardIds.filter(cardId => !cardIds.has(cardId));
+    if (missing.length) throw new Error(`combos.json ${id} 引用了不存在的卡牌：${missing.join(", ")}`);
+    seen.add(id);
+    return {
+      id,
+      name,
+      game,
+      cardIds: comboCardIds,
+      reward: {
+        drawChances,
+        fragments
+      }
+    };
+  });
+}
+
+const CARDS = normalizeCardData(loadJsonFile(CARDS_FILE, "cards.json"));
+const CARD_GAME_SET = new Set(CARDS.map(card => card.game).filter(Boolean));
+const CARD_GROUPS = [
+  ...PREFERRED_CARD_GROUPS.filter(group => CARD_GAME_SET.has(group)),
+  ...[...CARD_GAME_SET].filter(group => !PREFERRED_CARD_GROUPS.includes(group))
+];
+const SERIES = CARD_GROUPS;
+const COMBOS = normalizeComboData(loadJsonFile(COMBOS_FILE, "combos.json"));
 
 function cardSortOrder(card) {
   return Number.parseInt(String(card.id || "").replace(/\D/g, ""), 10) || 0;
 }
 
 function isPlaceholderCard(card) {
-  return cardSortOrder(card) > KNOWN_CARD_DEFS.length;
+  return Boolean(card.isPlaceholder);
 }
 
 function cardCatalogRow(card) {
@@ -153,8 +206,9 @@ function cardCatalogRow(card) {
     fragment: card.fragment,
     price: card.price,
     quote: card.quote,
+    image: card.image || "",
     isPlaceholder: isPlaceholderCard(card),
-    sortOrder: cardSortOrder(card)
+    sortOrder: card.sortOrder || cardSortOrder(card)
   };
 }
 
@@ -177,6 +231,7 @@ function supabaseCardRow(card) {
     fragment: row.fragment,
     price: row.price,
     quote: row.quote,
+    image: row.image,
     is_placeholder: row.isPlaceholder,
     sort_order: row.sortOrder,
     updated_at: new Date().toISOString()
@@ -190,13 +245,6 @@ function uniqueCardsById(cards) {
   }
   return [...map.values()];
 }
-
-const COMBOS = [
-  { id: "peace-grass-signal", name: "和平精英待定彩蛋", game: "和平精英", cardIds: ["c002", "c003", "c004"], reward: { drawChances: 3 } },
-  { id: "lol-reverse-highlight", name: "英雄联盟手游待定彩蛋", game: "英雄联盟手游", cardIds: ["c005", "c006", "c007"], reward: { drawChances: 5 } },
-  { id: "jcc-eighth-economy", name: "金铲铲之战待定彩蛋", game: "金铲铲之战", cardIds: ["c008", "c009", "c010"], reward: { fragments: 4 } },
-  { id: "community-luck-contract", name: "通用社区梗待定彩蛋", game: "通用社区梗", cardIds: ["c011", "c012"], reward: { fragments: 2 } }
-];
 
 const MAX_DAILY_CHALLENGES = 3;
 const OPS_EVENTS = [
@@ -901,15 +949,39 @@ function queueMysqlEvent(event) {
   });
 }
 
+async function ensureMysqlCardSchema() {
+  if (mysqlCardSchemaReady) return;
+  if (!mysqlCardSchemaPromise) {
+    mysqlCardSchemaPromise = (async () => {
+      const rows = await mysqlQuery(
+        `select count(*) as count
+         from information_schema.columns
+         where table_schema = database()
+           and table_name = 'cards'
+           and column_name = 'image'`
+      );
+      const imageColumnExists = Number(rows[0]?.count || 0) > 0;
+      if (!imageColumnExists) {
+        await mysqlQuery("alter table cards add column image varchar(255) not null default '' after quote");
+      }
+      mysqlCardSchemaReady = true;
+    })().finally(() => {
+      mysqlCardSchemaPromise = null;
+    });
+  }
+  await mysqlCardSchemaPromise;
+}
+
 async function ensureMysqlCardsSynced() {
   if (mysqlCardsSynced) return;
+  await ensureMysqlCardSchema();
   await Promise.all(CARDS.map(card => {
     const row = cardCatalogRow(card);
     return mysqlQuery(
       `insert into cards (
         id, name, game, ip, theme, series, rarity, rarity_name,
-        score, fragment, price, quote, is_placeholder, sort_order
-      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        score, fragment, price, quote, image, is_placeholder, sort_order
+      ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       on duplicate key update
         name = values(name),
         game = values(game),
@@ -922,6 +994,7 @@ async function ensureMysqlCardsSynced() {
         fragment = values(fragment),
         price = values(price),
         quote = values(quote),
+        image = values(image),
         is_placeholder = values(is_placeholder),
         sort_order = values(sort_order)`,
       [
@@ -937,6 +1010,7 @@ async function ensureMysqlCardsSynced() {
         row.fragment,
         row.price,
         row.quote,
+        row.image,
         Number(Boolean(row.isPlaceholder)),
         row.sortOrder
       ]
