@@ -10,6 +10,7 @@ loadEnv(path.join(ROOT_DIR, ".env"));
 loadEnv(path.join(__dirname, ".env"));
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || "0.0.0.0";
+const PUBLIC_BASE_URL = normalizePublicBaseUrl(process.env.PUBLIC_BASE_URL || "");
 const MYSQL_CONFIG = {
   host: process.env.MYSQL_HOST || "",
   port: Number(process.env.MYSQL_PORT || 3306),
@@ -29,6 +30,11 @@ const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_KEY);
 const MAX_DRAW_CHANCES = 15;
 const DRAW_RECOVERY_INTERVAL_MS = 30 * 60 * 1000;
 const PACK_SUBMIT_LOCK_MS = 30 * 1000;
+const DAILY_LOGIN_DRAW_CHANCES = 3;
+const SHARE_CLAIM_OWNER_DAILY_LIMIT = 3;
+const SHARE_CLAIM_VISITOR_DAILY_LIMIT = 3;
+const SHARE_CLAIM_OWNER_REWARD = { fragments: 20 };
+const SHARE_CLAIM_VISITOR_REWARD = { drawChances: 1 };
 const TOKEN_CACHE_TTL_MS = 2 * 60 * 1000;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
 const RANKING_CACHE_TTL_SECONDS = 8;
@@ -349,6 +355,23 @@ function loadEnv(file) {
   }
 }
 
+function normalizePublicBaseUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function publicUrl(pathname) {
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return PUBLIC_BASE_URL ? `${PUBLIC_BASE_URL}${normalizedPath}` : normalizedPath;
+}
+
+function sharePublicUrl(shareId, scene = "invite") {
+  const params = new URLSearchParams({
+    shareId,
+    scene: scene || "invite"
+  });
+  return publicUrl(`/share.html?${params.toString()}`);
+}
+
 function emptyDb() {
   return {
     users: [],
@@ -360,7 +383,8 @@ function emptyDb() {
     scoreEvents: [],
     drawRecords: [],
     packRecords: [],
-    packCards: []
+    packCards: [],
+    shareClaims: []
   };
 }
 
@@ -386,6 +410,7 @@ async function readDb() {
   db.drawRecords ||= [];
   db.packRecords ||= [];
   db.packCards ||= [];
+  db.shareClaims ||= [];
   db.users = db.users.filter(isObject);
   for (const user of db.users) ensureUserShape(user);
   return db;
@@ -704,6 +729,20 @@ function supabaseScoreEventRow(event) {
   };
 }
 
+function shareClaimRow(record) {
+  return {
+    id: record.id,
+    share_id: record.shareId,
+    owner_id: record.ownerId,
+    visitor_id: record.visitorId,
+    scene: record.scene,
+    claim_date: record.claimDate,
+    owner_reward: record.ownerReward || {},
+    visitor_reward: record.visitorReward || {},
+    created_at: record.createdAt
+  };
+}
+
 function rankingPlayerRow(user) {
   ensureUserShape(user);
   return {
@@ -724,6 +763,14 @@ function rankingWithNpcs(playerRows) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 50)
     .map((row, index) => ({ rank: index + 1, ...row }));
+}
+
+function markCurrentRanking(ranking, currentUserId) {
+  if (!currentUserId) return ranking;
+  return ranking.map(row => ({
+    ...row,
+    current: row.player && row.userId === currentUserId
+  }));
 }
 
 async function updateRankingCacheMember(user) {
@@ -796,6 +843,7 @@ async function updateMysqlPlayer(user) {
     ]
   );
   await updateRankingCacheMember(user);
+  refreshCachedUser(user);
 }
 
 async function setMysqlSession(token, userId) {
@@ -1094,19 +1142,30 @@ async function getMysqlRecentPackRecords(userId, limit = 20) {
 }
 
 async function getMysqlTodayUserEvents(userId) {
+  const [start, end] = todaySqlRange();
   const rows = await mysqlQuery(
-    "select * from events where player_id = ? and created_at >= ? order by created_at asc",
-    [userId, `${today()} 00:00:00.000`]
+    "select * from events where player_id = ? and created_at >= ? and created_at < ? order by created_at asc",
+    [userId, start, end]
   );
   return rows.map(mysqlEvent);
 }
 
+async function getMysqlTodayPackRecords(userId) {
+  const [start, end] = todaySqlRange();
+  const rows = await mysqlQuery(
+    "select * from pack_records where player_id = ? and created_at >= ? and created_at < ? order by created_at desc",
+    [userId, start, end]
+  );
+  return rows.map(mysqlPackRecord);
+}
+
 async function mysqlUserView(user, includeDrawRecords = false) {
-  const [drawRecords, events] = await Promise.all([
+  const [drawRecords, events, packRecords] = await Promise.all([
     includeDrawRecords ? getMysqlRecentDrawRecords(user.id) : Promise.resolve([]),
-    getMysqlTodayUserEvents(user.id)
+    getMysqlTodayUserEvents(user.id),
+    getMysqlTodayPackRecords(user.id)
   ]);
-  return userView(user, { drawRecords, events });
+  return userView(user, { drawRecords, events, packRecords });
 }
 
 async function getMysqlShareById(shareId) {
@@ -1137,6 +1196,25 @@ async function upsertMysqlShare(share) {
       share.visits,
       Number(Boolean(share.rewarded)),
       sqlDate(share.createdAt)
+    ]
+  );
+}
+
+async function insertMysqlShareClaim(record) {
+  await mysqlQuery(
+    `insert into share_claims (
+      id, share_id, owner_id, visitor_id, scene, claim_date, owner_reward, visitor_reward, created_at
+    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      record.id,
+      record.shareId,
+      record.ownerId,
+      record.visitorId,
+      record.scene,
+      record.claimDate,
+      JSON.stringify(record.ownerReward || {}),
+      JSON.stringify(record.visitorReward || {}),
+      sqlDate(record.createdAt)
     ]
   );
 }
@@ -1176,7 +1254,7 @@ async function invalidateRankingCache() {
 }
 
 async function readSupabaseDb() {
-  const [players, sessions, shares, events, drawRecords, packRecords, packCards, playerCards, scoreEvents] = await Promise.all([
+  const [players, sessions, shares, events, drawRecords, packRecords, packCards, playerCards, scoreEvents, shareClaims] = await Promise.all([
     supabaseFetch("players", { query: "?select=*" }),
     supabaseFetch("sessions", { query: "?select=*" }),
     supabaseFetch("shares", { query: "?select=*" }),
@@ -1185,7 +1263,8 @@ async function readSupabaseDb() {
     supabaseFetch("pack_records", { query: "?select=*" }),
     supabaseFetch("pack_cards", { query: "?select=*" }),
     supabaseFetch("player_cards", { query: "?select=*" }),
-    supabaseFetch("score_events", { query: "?select=*" })
+    supabaseFetch("score_events", { query: "?select=*" }),
+    supabaseFetch("share_claims", { query: "?select=*" })
   ]);
   const db = emptyDb();
   db.users = (players || []).map(row => ({
@@ -1271,6 +1350,17 @@ async function readSupabaseDb() {
     scoreAfter: row.score_after,
     reason: row.reason,
     payload: row.payload || {},
+    createdAt: row.created_at
+  }));
+  db.shareClaims = (shareClaims || []).map(row => ({
+    id: row.id,
+    shareId: row.share_id,
+    ownerId: row.owner_id,
+    visitorId: row.visitor_id,
+    scene: row.scene,
+    claimDate: row.claim_date,
+    ownerReward: row.owner_reward || {},
+    visitorReward: row.visitor_reward || {},
     createdAt: row.created_at
   }));
   for (const user of db.users) ensureUserShape(user);
@@ -1379,6 +1469,13 @@ function cachedUser(token) {
   return item.user;
 }
 
+function refreshCachedUser(user) {
+  if (!user?.id) return;
+  for (const item of tokenUserCache.values()) {
+    if (item.user?.id === user.id) item.user = user;
+  }
+}
+
 async function getUserByToken(req) {
   const token = bearerToken(req);
   if (!token) return null;
@@ -1396,6 +1493,7 @@ async function getUserByToken(req) {
 async function updatePlayer(user) {
   await upsert("players", [userToPlayerRow(user)], "id");
   await updateRankingCacheMember(user);
+  refreshCachedUser(user);
 }
 
 async function insertSession(token, userId) {
@@ -1597,10 +1695,18 @@ async function getRecentPackRecords(userId, limit = 20) {
   }));
 }
 
+async function getTodayPackRecords(userId) {
+  const [start, end] = todayIsoRange();
+  const rows = await supabaseFetch("pack_records", {
+    query: `?player_id=eq.${encodeURIComponent(userId)}&created_at=gte.${encodeURIComponent(start)}&created_at=lt.${encodeURIComponent(end)}&select=*&order=created_at.desc`
+  });
+  return (rows || []).map(rowToPackRecord);
+}
+
 async function getTodayUserEvents(userId) {
-  const start = `${today()}T00:00:00.000Z`;
+  const [start, end] = todayIsoRange();
   const rows = await supabaseFetch("events", {
-    query: `?player_id=eq.${encodeURIComponent(userId)}&created_at=gte.${encodeURIComponent(start)}&select=*`
+    query: `?player_id=eq.${encodeURIComponent(userId)}&created_at=gte.${encodeURIComponent(start)}&created_at=lt.${encodeURIComponent(end)}&select=*`
   });
   return (rows || []).map(row => ({
     id: row.id,
@@ -1618,16 +1724,20 @@ async function getTodayUserEvents(userId) {
 }
 
 async function userViewFromSupabase(user) {
-  const [drawRecords, events] = await Promise.all([
+  const [drawRecords, events, packRecords] = await Promise.all([
     getRecentDrawRecords(user.id),
-    getTodayUserEvents(user.id)
+    getTodayUserEvents(user.id),
+    getTodayPackRecords(user.id)
   ]);
-  return userView(user, { drawRecords, events });
+  return userView(user, { drawRecords, events, packRecords });
 }
 
 async function userViewWithTodayEvents(user) {
-  const events = await getTodayUserEvents(user.id);
-  return userView(user, { drawRecords: [], events });
+  const [events, packRecords] = await Promise.all([
+    getTodayUserEvents(user.id),
+    getTodayPackRecords(user.id)
+  ]);
+  return userView(user, { drawRecords: [], events, packRecords });
 }
 
 async function getShareById(shareId) {
@@ -1661,6 +1771,10 @@ async function insertShare(share) {
 
 async function updateShare(share) {
   await insertShare(share);
+}
+
+async function insertShareClaim(record) {
+  await upsert("share_claims", [shareClaimRow(record)], "id");
 }
 
 async function getRankingPlayers() {
@@ -1746,6 +1860,7 @@ async function writeSupabaseDb(db) {
   await upsert("pack_cards", (db.packCards || []).map(packCardToRow), "id");
   await upsert("player_cards", (db.playerCards || []).map(supabasePlayerCardRow), "player_id,card_id");
   await upsert("score_events", (db.scoreEvents || []).map(supabaseScoreEventRow), "id");
+  await upsert("share_claims", (db.shareClaims || []).map(shareClaimRow), "id");
   await upsert("events", db.events.map(event => ({
     id: event.id,
     type: event.type,
@@ -1828,12 +1943,41 @@ function normalizeAccount(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function localDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value || "").slice(0, 10);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateKey();
+}
+
+function localDayStart(date = today()) {
+  return new Date(`${date}T00:00:00`);
+}
+
+function nextLocalDayStart(date = today()) {
+  const start = localDayStart(date);
+  start.setDate(start.getDate() + 1);
+  return start;
+}
+
+function todaySqlRange() {
+  return [sqlDate(localDayStart()), sqlDate(nextLocalDayStart())];
+}
+
+function todayIsoRange() {
+  return [localDayStart().toISOString(), nextLocalDayStart().toISOString()];
+}
+
+function isTodayDate(value) {
+  return localDateKey(value) === today();
 }
 
 function dayIndex(date = today()) {
-  return Math.floor(new Date(`${date}T00:00:00.000Z`).getTime() / 86_400_000);
+  return Math.floor(localDayStart(date).getTime() / 86_400_000);
 }
 
 function plannerTitle(user) {
@@ -1901,6 +2045,10 @@ function ensureUserShape(user) {
   user.effectState ||= {};
   if (!isObject(user.effectState)) user.effectState = {};
   if (!isObject(user.effectState.comboRewards)) user.effectState.comboRewards = {};
+  if (!isObject(user.effectState.dailyLoginRewards)) user.effectState.dailyLoginRewards = {};
+  if (!isObject(user.effectState.shareClaims)) user.effectState.shareClaims = {};
+  if (!isObject(user.effectState.shareClaims.sent)) user.effectState.shareClaims.sent = {};
+  if (!isObject(user.effectState.shareClaims.received)) user.effectState.shareClaims.received = {};
   user.fragments ||= 0;
   user.score ||= 0;
   user.heat ||= 0;
@@ -1915,6 +2063,114 @@ function addDrawChances(user, amount) {
   ensureUserShape(user);
   user.drawChances = Math.min(MAX_DRAW_CHANCES, user.drawChances + amount);
   if (user.drawChances >= MAX_DRAW_CHANCES) user.lastRecoveredAt = new Date().toISOString();
+}
+
+function markDailyLoginClaimed(user, date = today()) {
+  ensureUserShape(user);
+  user.effectState.dailyLoginRewards[date] = true;
+}
+
+function applyResourceReward(user, reward = {}) {
+  ensureUserShape(user);
+  const applied = { drawChances: 0, fragments: 0 };
+  if (reward.drawChances) {
+    const before = user.drawChances;
+    addDrawChances(user, reward.drawChances);
+    applied.drawChances = user.drawChances - before;
+  }
+  if (reward.fragments) {
+    user.fragments += reward.fragments;
+    applied.fragments = reward.fragments;
+  }
+  return applied;
+}
+
+function applyDailyLoginReward(user, date = today()) {
+  ensureUserShape(user);
+  if (user.effectState.dailyLoginRewards[date]) return [];
+  const applied = applyResourceReward(user, { drawChances: DAILY_LOGIN_DRAW_CHANCES });
+  if (!applied.drawChances) return [];
+  markDailyLoginClaimed(user, date);
+  return [`每日登录奖励：获得 ${applied.drawChances} 次抽卡机会`];
+}
+
+function initialEffectState() {
+  const effectState = { dailyLoginRewards: {}, shareClaims: { sent: {}, received: {} } };
+  effectState.dailyLoginRewards[today()] = true;
+  return effectState;
+}
+
+function shareClaimDayState(user, direction, date = today()) {
+  ensureUserShape(user);
+  const root = user.effectState.shareClaims;
+  root[direction] ||= {};
+  root[direction][date] ||= { count: 0, shareIds: {}, ownerIds: {}, visitorIds: {} };
+  const state = root[direction][date];
+  if (!isObject(state.shareIds)) state.shareIds = {};
+  if (!isObject(state.ownerIds)) state.ownerIds = {};
+  if (!isObject(state.visitorIds)) state.visitorIds = {};
+  state.count ||= 0;
+  return state;
+}
+
+function claimSharePack(owner, visitor, share, date = today()) {
+  ensureUserShape(owner);
+  ensureUserShape(visitor);
+  if (owner.id === visitor.id) {
+    const error = new Error("不能蹭自己的包");
+    error.status = 400;
+    throw error;
+  }
+
+  const visitorState = shareClaimDayState(visitor, "sent", date);
+  const ownerState = shareClaimDayState(owner, "received", date);
+  if (visitorState.shareIds[share.id] || visitorState.ownerIds[owner.id] || ownerState.visitorIds[visitor.id]) {
+    return {
+      claimed: false,
+      message: "你今天已经蹭过这位好友的包了",
+      ownerReward: {},
+      visitorReward: {}
+    };
+  }
+  if (visitorState.count >= SHARE_CLAIM_VISITOR_DAILY_LIMIT) {
+    const error = new Error("你今天的蹭包次数已用完");
+    error.status = 400;
+    throw error;
+  }
+  if (ownerState.count >= SHARE_CLAIM_OWNER_DAILY_LIMIT) {
+    const error = new Error("这位好友今天的可被蹭包次数已用完");
+    error.status = 400;
+    throw error;
+  }
+
+  const ownerReward = applyResourceReward(owner, SHARE_CLAIM_OWNER_REWARD);
+  const visitorReward = applyResourceReward(visitor, SHARE_CLAIM_VISITOR_REWARD);
+  visitorState.count += 1;
+  visitorState.shareIds[share.id] = true;
+  visitorState.ownerIds[owner.id] = true;
+  ownerState.count += 1;
+  ownerState.visitorIds[visitor.id] = true;
+
+  return {
+    claimed: true,
+    message: "蹭包成功，双方奖励已到账",
+    ownerReward,
+    visitorReward
+  };
+}
+
+function shareClaimRecord(share, owner, visitor, claim) {
+  return {
+    id: id("clm"),
+    shareId: share.id,
+    ownerId: owner.id,
+    visitorId: visitor.id,
+    scene: share.scene,
+    claimDate: today(),
+    ownerReward: claim.ownerReward || {},
+    visitorReward: claim.visitorReward || {},
+    createdAt: new Date().toISOString()
+  };
 }
 
 function recoverDrawChances(user, now = new Date()) {
@@ -2295,6 +2551,16 @@ function drawEventFromPack(user, result, createdAt) {
   };
 }
 
+function packOpenEvent(user, pack) {
+  return {
+    type: "pack_open",
+    userId: user.id,
+    scene: "pack_start",
+    createdAt: pack.createdAt,
+    payload: { packId: pack.id }
+  };
+}
+
 function packRecordFromStart(user, pack) {
   return {
     id: pack.id,
@@ -2415,31 +2681,23 @@ function appendLocalScoreEvent(db, event) {
 }
 
 async function insertMysqlPackStart(user, pack) {
-  await Promise.all([
-    upsertMysqlPackRecord(packRecordFromStart(user, pack)),
-    upsertMysqlPackCards(packCardRecordsFromStart(user, pack))
-  ]);
+  await upsertMysqlPackRecord(packRecordFromStart(user, pack));
+  await upsertMysqlPackCards(packCardRecordsFromStart(user, pack));
 }
 
 async function settleMysqlPack(user, pack, result, settledAt) {
-  await Promise.all([
-    upsertMysqlPackRecord(packRecordFromResult(user, pack, result, settledAt)),
-    upsertMysqlPackCards(packCardRecordsFromResult(user, pack, result, settledAt))
-  ]);
+  await upsertMysqlPackRecord(packRecordFromResult(user, pack, result, settledAt));
+  await upsertMysqlPackCards(packCardRecordsFromResult(user, pack, result, settledAt));
 }
 
 async function insertPackStart(user, pack) {
-  await Promise.all([
-    upsertPackRecord(packRecordFromStart(user, pack)),
-    upsertPackCards(packCardRecordsFromStart(user, pack))
-  ]);
+  await upsertPackRecord(packRecordFromStart(user, pack));
+  await upsertPackCards(packCardRecordsFromStart(user, pack));
 }
 
 async function settlePack(user, pack, result, settledAt) {
-  await Promise.all([
-    upsertPackRecord(packRecordFromResult(user, pack, result, settledAt)),
-    upsertPackCards(packCardRecordsFromResult(user, pack, result, settledAt))
-  ]);
+  await upsertPackRecord(packRecordFromResult(user, pack, result, settledAt));
+  await upsertPackCards(packCardRecordsFromResult(user, pack, result, settledAt));
 }
 
 function record(db, event) {
@@ -2447,14 +2705,26 @@ function record(db, event) {
 }
 
 function todayEvents(db, predicate) {
-  const prefix = today();
-  return db.events.filter(event => event.createdAt?.startsWith(prefix) && predicate(event));
+  return (db?.events || []).filter(event => isTodayDate(event.createdAt) && predicate(event));
+}
+
+function todayRecords(records = [], predicate = () => true) {
+  return records.filter(record => isTodayDate(record.createdAt) && predicate(record));
+}
+
+function todayPackOpenCount(user, db = null) {
+  if (!db) return 0;
+  const packCount = todayRecords(db.packRecords || [], record => record.userId === user.id).length;
+  if (packCount) return packCount;
+  const openEvents = todayEvents(db, event => event.type === "pack_open" && event.userId === user.id).length;
+  if (openEvents) return openEvents;
+  return todayEvents(db, event => event.type === "draw" && event.userId === user.id).length;
 }
 
 function taskStatus(user, db = null) {
   ensureUserShape(user);
   const date = today();
-  const drawCount = db ? todayEvents(db, event => event.type === "draw" && event.userId === user.id).length : 0;
+  const drawCount = todayPackOpenCount(user, db);
   const shareJumpCount = db ? todayEvents(db, event => event.type === "share_visit" && event.ownerId === user.id).length : 0;
   const collectionCount = Object.keys(user.ownedCards).length;
   return [
@@ -2490,7 +2760,7 @@ function applyDailyTasks(user, db) {
   const date = today();
   const rewards = [];
   const rules = [
-    { id: "draw3", done: todayEvents(db, event => event.type === "draw" && event.userId === user.id).length >= 3, drawChances: 1, text: "今日开 3 包完成，奖励 1 次抽卡" },
+    { id: "draw3", done: todayPackOpenCount(user, db) >= 3, drawChances: 1, text: "今日开 3 包完成，奖励 1 次抽卡" },
     { id: "share1", done: todayEvents(db, event => event.type === "share_visit" && event.ownerId === user.id).length >= 1, fragments: 20, text: "分享跳转任务完成，奖励 20 碎片" },
     { id: "collect4", done: Object.keys(user.ownedCards).length >= 4, fragments: 30, text: "收集 4 张不同卡完成，奖励 30 碎片" }
   ];
@@ -2609,7 +2879,7 @@ async function handleMySQL(req, res, url) {
         seriesRewards: {},
         milestoneRewards: { score: {}, packs: {} },
         challengeState: {},
-        effectState: {}
+        effectState: initialEffectState()
       };
       const token = id("tok");
       await updateMysqlPlayer(user);
@@ -2628,20 +2898,25 @@ async function handleMySQL(req, res, url) {
       }
       const token = id("tok");
       const recovered = recoverDrawChances(user);
-      if (recovered) await updateMysqlPlayer(user);
+      const rewards = applyDailyLoginReward(user);
+      if (recovered || rewards.length) await updateMysqlPlayer(user);
       await setMysqlSession(token, user.id);
       cacheUser(token, user);
       queueMysqlEvent({ type: "login", userId: user.id });
-      return json(res, 200, { token, user: userView(user, { drawRecords: [], events: [] }) });
+      return json(res, 200, { token, user: userView(user, { drawRecords: [], events: [] }), rewards });
     }
 
     if (req.method === "GET" && url.pathname === "/api/profile") {
       const user = await getMysqlUserByToken(req);
       if (!user) return json(res, 401, { message: "请先登录" });
       const recovered = recoverDrawChances(user);
-      const events = await getMysqlTodayUserEvents(user.id);
+      const [events, packRecords] = await Promise.all([
+        getMysqlTodayUserEvents(user.id),
+        getMysqlTodayPackRecords(user.id)
+      ]);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyLoginReward(user),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
@@ -2695,10 +2970,13 @@ async function handleMySQL(req, res, url) {
       state.choices.push(entry);
       const challengeEvent = { type: "challenge", userId: user.id, scene: event.id, payload: entry, createdAt: entry.createdAt };
       queueMysqlEvent(challengeEvent);
-      const events = await getMysqlTodayUserEvents(user.id);
+      const [events, packRecords] = await Promise.all([
+        getMysqlTodayUserEvents(user.id),
+        getMysqlTodayPackRecords(user.id)
+      ]);
       events.push(challengeEvent);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
@@ -2709,7 +2987,7 @@ async function handleMySQL(req, res, url) {
         outcome: entry,
         rewards,
         challenge: challengeSummary(user),
-        user: userView(user, { drawRecords: [], events })
+        user: userView(user, { drawRecords: [], events, packRecords })
       });
     }
 
@@ -2720,18 +2998,35 @@ async function handleMySQL(req, res, url) {
       const currentPack = activePendingPack(user);
       if (currentPack) {
         if (recovered) await updateMysqlPlayer(user);
+        const [events, packRecords] = await Promise.all([
+          getMysqlTodayUserEvents(user.id),
+          getMysqlTodayPackRecords(user.id)
+        ]);
         return json(res, 200, {
           pack: packView(currentPack),
           pending: true,
-          user: userView(user, { drawRecords: [], events: await getMysqlTodayUserEvents(user.id) })
+          user: userView(user, { drawRecords: [], events, packRecords })
         });
       }
       if (user.drawChances <= 0) return json(res, 400, { message: "抽卡次数不足" });
       user.drawChances -= 1;
       const pack = createPendingPack(user);
       await insertMysqlPackStart(user, pack);
+      const packEvent = packOpenEvent(user, pack);
+      queueMysqlEvent(packEvent);
+      const [events, packRecords] = await Promise.all([
+        getMysqlTodayUserEvents(user.id),
+        getMysqlTodayPackRecords(user.id)
+      ]);
+      events.push(packEvent);
+      const rewards = applyDailyTasks(user, { events, packRecords });
       await updateMysqlPlayer(user);
-      return json(res, 200, { pack: packView(pack), pending: false, user: userView(user, { drawRecords: [], events: await getMysqlTodayUserEvents(user.id) }) });
+      return json(res, 200, {
+        pack: packView(pack),
+        pending: false,
+        rewards,
+        user: userView(user, { drawRecords: [], events, packRecords })
+      });
     }
 
     if (req.method === "POST" && url.pathname === "/api/draw/submit") {
@@ -2763,8 +3058,9 @@ async function handleMySQL(req, res, url) {
         payload: { cardIds: result.selectedCards.filter(card => card.scoreGained > 0).map(card => card.id) },
         createdAt
       });
-      const [events] = await Promise.all([
+      const [events, packRecords] = await Promise.all([
         getMysqlTodayUserEvents(user.id),
+        getMysqlTodayPackRecords(user.id),
         Promise.all(drawRecords.map(insertMysqlDrawRecord)),
         settleMysqlPack(user, pack, result, createdAt),
         upsertMysqlPlayerCards(user, result.selectedCards, "draw", createdAt)
@@ -2772,14 +3068,14 @@ async function handleMySQL(req, res, url) {
       queueMysqlEvent(drawEvent);
       events.push(drawEvent);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
       await insertMysqlScoreEvent(scoreEvent);
       await updateMysqlPlayer(user);
       await invalidateRankingCache();
-      return json(res, 200, { result, drawRecords, rewards, user: userView(user, { drawRecords, events }) });
+      return json(res, 200, { result, drawRecords, rewards, user: userView(user, { drawRecords, events, packRecords }) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/exchange") {
@@ -2804,9 +3100,12 @@ async function handleMySQL(req, res, url) {
         createdAt
       });
       queueMysqlEvent({ type: "exchange", userId: user.id, cardId: card.id, createdAt });
-      const events = await getMysqlTodayUserEvents(user.id);
+      const [events, packRecords] = await Promise.all([
+        getMysqlTodayUserEvents(user.id),
+        getMysqlTodayPackRecords(user.id)
+      ]);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
@@ -2814,7 +3113,7 @@ async function handleMySQL(req, res, url) {
       await insertMysqlScoreEvent(scoreEvent);
       await updateMysqlPlayer(user);
       await invalidateRankingCache();
-      return json(res, 200, { card, rewards, user: userView(user, { drawRecords: [], events }) });
+      return json(res, 200, { card, rewards, user: userView(user, { drawRecords: [], events, packRecords }) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/share/create") {
@@ -2835,7 +3134,7 @@ async function handleMySQL(req, res, url) {
       await upsertMysqlShare(share);
       queueMysqlEvent({ type: "share_create", userId: user.id, shareId: share.id, scene });
       if (recovered) await updateMysqlPlayer(user);
-      return json(res, 200, { share, shareUrl: `../frontend/share.html?shareId=${share.id}` });
+      return json(res, 200, { share, shareUrl: sharePublicUrl(share.id, share.scene) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/share/visit") {
@@ -2865,20 +3164,67 @@ async function handleMySQL(req, res, url) {
         createdAt: new Date().toISOString()
       };
       queueMysqlEvent(shareEvent);
-      const events = await getMysqlTodayUserEvents(owner.id);
+      const [events, packRecords] = await Promise.all([
+        getMysqlTodayUserEvents(owner.id),
+        getMysqlTodayPackRecords(owner.id)
+      ]);
       events.push(shareEvent);
-      const rewards = [...applyDailyTasks(owner, { events, drawRecords: [] }), ...applyMilestoneRewards(owner)];
+      const rewards = [...applyDailyTasks(owner, { events, drawRecords: [], packRecords }), ...applyMilestoneRewards(owner)];
       await updateMysqlPlayer(owner);
       return json(res, 200, { share, owner: { nickname: owner.nickname }, reward, taskRewards: rewards });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/share/claim") {
+      const visitor = await getMysqlUserByToken(req);
+      if (!visitor) return json(res, 401, { message: "请先登录后再蹭包" });
+      const body = await parseBody(req);
+      const share = await getMysqlShareById(String(body.shareId || ""));
+      if (!share) return json(res, 404, { message: "分享不存在" });
+      const owner = await getMysqlPlayerById(share.userId);
+      if (!owner) return json(res, 404, { message: "分享者不存在" });
+      recoverDrawChances(owner);
+      recoverDrawChances(visitor);
+      let claim;
+      try {
+        claim = claimSharePack(owner, visitor, share);
+      } catch (error) {
+        return json(res, error.status || 400, { message: error.message });
+      }
+      let claimRecord = null;
+      if (claim.claimed) {
+        claimRecord = shareClaimRecord(share, owner, visitor, claim);
+        await insertMysqlShareClaim(claimRecord);
+        queueMysqlEvent({
+          type: "share_claim",
+          userId: visitor.id,
+          ownerId: owner.id,
+          shareId: share.id,
+          scene: share.scene,
+          rewarded: true,
+          payload: {
+            ownerReward: claim.ownerReward,
+            visitorReward: claim.visitorReward
+          },
+          createdAt: claimRecord.createdAt
+        });
+      }
+      await Promise.all([updateMysqlPlayer(owner), updateMysqlPlayer(visitor)]);
+      return json(res, 200, {
+        share,
+        owner: { id: owner.id, nickname: owner.nickname },
+        claim: { ...claim, record: claimRecord },
+        user: await mysqlUserView(visitor, true)
+      });
+    }
+
     if (req.method === "GET" && url.pathname === "/api/ranking") {
-      return json(res, 200, { ranking: await getMysqlRankingRows() });
+      const current = await getMysqlUserByToken(req);
+      return json(res, 200, { ranking: markCurrentRanking(await getMysqlRankingRows(), current?.id) });
     }
 
     if (req.method === "GET" && url.pathname === "/api/stats") {
       await ensureMysqlCardsSynced();
-      const [users, shares, visits, draws, packs, cards, playerCards, scoreEvents] = await Promise.all([
+      const [users, shares, visits, draws, packs, cards, playerCards, scoreEvents, shareClaims] = await Promise.all([
         mysqlQuery("select count(*) as count from players"),
         mysqlQuery("select count(*) as count from shares"),
         mysqlQuery("select count(*) as count from events where type = 'share_visit'"),
@@ -2886,7 +3232,8 @@ async function handleMySQL(req, res, url) {
         mysqlQuery("select count(*) as count from pack_records"),
         mysqlQuery("select count(*) as count from cards"),
         mysqlQuery("select count(*) as count from player_cards"),
-        mysqlQuery("select count(*) as count from score_events")
+        mysqlQuery("select count(*) as count from score_events"),
+        mysqlQuery("select count(*) as count from share_claims")
       ]);
       return json(res, 200, {
         users: users[0]?.count || 0,
@@ -2896,7 +3243,8 @@ async function handleMySQL(req, res, url) {
         packs: packs[0]?.count || 0,
         cards: cards[0]?.count || 0,
         playerCards: playerCards[0]?.count || 0,
-        scoreEvents: scoreEvents[0]?.count || 0
+        scoreEvents: scoreEvents[0]?.count || 0,
+        shareClaims: shareClaims[0]?.count || 0
       });
     }
 
@@ -2960,7 +3308,7 @@ async function handleSupabase(req, res, url) {
         seriesRewards: {},
         milestoneRewards: { score: {}, packs: {} },
         challengeState: {},
-        effectState: {}
+        effectState: initialEffectState()
       };
       const token = id("tok");
       await updatePlayer(user);
@@ -2979,20 +3327,25 @@ async function handleSupabase(req, res, url) {
       }
       const token = id("tok");
       const recovered = recoverDrawChances(user);
-      if (recovered) await updatePlayer(user);
+      const rewards = applyDailyLoginReward(user);
+      if (recovered || rewards.length) await updatePlayer(user);
       await insertSession(token, user.id);
       cacheUser(token, user);
       queueEvent({ type: "login", userId: user.id });
-      return json(res, 200, { token, user: userView(user, { drawRecords: [], events: [] }) });
+      return json(res, 200, { token, user: userView(user, { drawRecords: [], events: [] }), rewards });
     }
 
     if (req.method === "GET" && url.pathname === "/api/profile") {
       const user = await getUserByToken(req);
       if (!user) return json(res, 401, { message: "请先登录" });
       const recovered = recoverDrawChances(user);
-      const events = await getTodayUserEvents(user.id);
+      const [events, packRecords] = await Promise.all([
+        getTodayUserEvents(user.id),
+        getTodayPackRecords(user.id)
+      ]);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyLoginReward(user),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
@@ -3042,9 +3395,12 @@ async function handleSupabase(req, res, url) {
       state.count += 1;
       state.choices.push(entry);
       queueEvent({ type: "challenge", userId: user.id, scene: event.id, payload: entry });
-      const events = await getTodayUserEvents(user.id);
+      const [events, packRecords] = await Promise.all([
+        getTodayUserEvents(user.id),
+        getTodayPackRecords(user.id)
+      ]);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
@@ -3054,7 +3410,7 @@ async function handleSupabase(req, res, url) {
         outcome: entry,
         rewards,
         challenge: challengeSummary(user),
-        user: userView(user, { drawRecords: [], events })
+        user: userView(user, { drawRecords: [], events, packRecords })
       });
     }
 
@@ -3065,18 +3421,35 @@ async function handleSupabase(req, res, url) {
       const currentPack = activePendingPack(user);
       if (currentPack) {
         if (recovered) await updatePlayer(user);
+        const [events, packRecords] = await Promise.all([
+          getTodayUserEvents(user.id),
+          getTodayPackRecords(user.id)
+        ]);
         return json(res, 200, {
           pack: packView(currentPack),
           pending: true,
-          user: userView(user, { drawRecords: [], events: await getTodayUserEvents(user.id) })
+          user: userView(user, { drawRecords: [], events, packRecords })
         });
       }
       if (user.drawChances <= 0) return json(res, 400, { message: "抽卡次数不足" });
       user.drawChances -= 1;
       const pack = createPendingPack(user);
       await insertPackStart(user, pack);
+      const packEvent = packOpenEvent(user, pack);
+      queueEvent(packEvent);
+      const [events, packRecords] = await Promise.all([
+        getTodayUserEvents(user.id),
+        getTodayPackRecords(user.id)
+      ]);
+      events.push(packEvent);
+      const rewards = applyDailyTasks(user, { events, packRecords });
       await updatePlayer(user);
-      return json(res, 200, { pack: packView(pack), pending: false, user: userView(user, { drawRecords: [], events: await getTodayUserEvents(user.id) }) });
+      return json(res, 200, {
+        pack: packView(pack),
+        pending: false,
+        rewards,
+        user: userView(user, { drawRecords: [], events, packRecords })
+      });
     }
 
     if (req.method === "POST" && url.pathname === "/api/draw/submit") {
@@ -3109,21 +3482,22 @@ async function handleSupabase(req, res, url) {
         createdAt
       });
       queueEvent(drawEvent);
-      const [events] = await Promise.all([
+      const [events, packRecords] = await Promise.all([
         getTodayUserEvents(user.id),
+        getTodayPackRecords(user.id),
         Promise.all(drawRecords.map(insertDrawRecord)),
         settlePack(user, pack, result, createdAt),
         upsertPlayerCards(user, result.selectedCards, "draw", createdAt)
       ]);
       events.push(drawEvent);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
       await insertScoreEvent(scoreEvent);
       await updatePlayer(user);
-      return json(res, 200, { result, drawRecords, rewards, user: userView(user, { drawRecords, events }) });
+      return json(res, 200, { result, drawRecords, rewards, user: userView(user, { drawRecords, events, packRecords }) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/exchange") {
@@ -3148,16 +3522,19 @@ async function handleSupabase(req, res, url) {
         createdAt
       });
       queueEvent({ type: "exchange", userId: user.id, cardId: card.id, createdAt });
-      const events = await getTodayUserEvents(user.id);
+      const [events, packRecords] = await Promise.all([
+        getTodayUserEvents(user.id),
+        getTodayPackRecords(user.id)
+      ]);
       const rewards = [
-        ...applyDailyTasks(user, { events, drawRecords: [] }),
+        ...applyDailyTasks(user, { events, drawRecords: [], packRecords }),
         ...applyComboRewards(user),
         ...applyMilestoneRewards(user)
       ];
       await upsertPlayerCards(user, [card], "exchange", createdAt);
       await insertScoreEvent(scoreEvent);
       await updatePlayer(user);
-      return json(res, 200, { card, rewards, user: userView(user, { drawRecords: [], events }) });
+      return json(res, 200, { card, rewards, user: userView(user, { drawRecords: [], events, packRecords }) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/share/create") {
@@ -3178,7 +3555,7 @@ async function handleSupabase(req, res, url) {
       await insertShare(share);
       queueEvent({ type: "share_create", userId: user.id, shareId: share.id, scene });
       if (recovered) await updatePlayer(user);
-      return json(res, 200, { share, shareUrl: `../frontend/share.html?shareId=${share.id}` });
+      return json(res, 200, { share, shareUrl: sharePublicUrl(share.id, share.scene) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/share/visit") {
@@ -3208,14 +3585,61 @@ async function handleSupabase(req, res, url) {
         createdAt: new Date().toISOString()
       };
       queueEvent(shareEvent);
-      const events = await getTodayUserEvents(owner.id);
+      const [events, packRecords] = await Promise.all([
+        getTodayUserEvents(owner.id),
+        getTodayPackRecords(owner.id)
+      ]);
       events.push(shareEvent);
-      const rewards = [...applyDailyTasks(owner, { events, drawRecords: [] }), ...applyMilestoneRewards(owner)];
+      const rewards = [...applyDailyTasks(owner, { events, drawRecords: [], packRecords }), ...applyMilestoneRewards(owner)];
       await updatePlayer(owner);
       return json(res, 200, { share, owner: { nickname: owner.nickname }, reward, taskRewards: rewards });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/share/claim") {
+      const visitor = await getUserByToken(req);
+      if (!visitor) return json(res, 401, { message: "请先登录后再蹭包" });
+      const body = await parseBody(req);
+      const share = await getShareById(String(body.shareId || ""));
+      if (!share) return json(res, 404, { message: "分享不存在" });
+      const owner = await getPlayerById(share.userId);
+      if (!owner) return json(res, 404, { message: "分享者不存在" });
+      recoverDrawChances(owner);
+      recoverDrawChances(visitor);
+      let claim;
+      try {
+        claim = claimSharePack(owner, visitor, share);
+      } catch (error) {
+        return json(res, error.status || 400, { message: error.message });
+      }
+      let claimRecord = null;
+      if (claim.claimed) {
+        claimRecord = shareClaimRecord(share, owner, visitor, claim);
+        await insertShareClaim(claimRecord);
+        queueEvent({
+          type: "share_claim",
+          userId: visitor.id,
+          ownerId: owner.id,
+          shareId: share.id,
+          scene: share.scene,
+          rewarded: true,
+          payload: {
+            ownerReward: claim.ownerReward,
+            visitorReward: claim.visitorReward
+          },
+          createdAt: claimRecord.createdAt
+        });
+      }
+      await Promise.all([updatePlayer(owner), updatePlayer(visitor)]);
+      return json(res, 200, {
+        share,
+        owner: { id: owner.id, nickname: owner.nickname },
+        claim: { ...claim, record: claimRecord },
+        user: await userViewFromSupabase(visitor)
+      });
+    }
+
     if (req.method === "GET" && url.pathname === "/api/ranking") {
+      const current = await getUserByToken(req);
       const players = await getRankingPlayers();
       const playerRows = players.map(row => {
         const user = rowToUser(row);
@@ -3235,12 +3659,12 @@ async function handleSupabase(req, res, url) {
         .sort((a, b) => b.score - a.score)
         .slice(0, 50)
         .map((row, index) => ({ rank: index + 1, ...row }));
-      return json(res, 200, { ranking });
+      return json(res, 200, { ranking: markCurrentRanking(ranking, current?.id) });
     }
 
     if (req.method === "GET" && url.pathname === "/api/stats") {
       await ensureSupabaseCardsSynced();
-      const [users, shares, visits, draws, packs, cards, playerCards, scoreEvents] = await Promise.all([
+      const [users, shares, visits, draws, packs, cards, playerCards, scoreEvents, shareClaims] = await Promise.all([
         supabaseFetch("players", { query: "?select=id" }),
         supabaseFetch("shares", { query: "?select=id" }),
         supabaseFetch("events", { query: "?type=eq.share_visit&select=id" }),
@@ -3248,7 +3672,8 @@ async function handleSupabase(req, res, url) {
         supabaseFetch("pack_records", { query: "?select=id" }),
         supabaseFetch("cards", { query: "?select=id" }),
         supabaseFetch("player_cards", { query: "?select=player_id,card_id" }),
-        supabaseFetch("score_events", { query: "?select=id" })
+        supabaseFetch("score_events", { query: "?select=id" }),
+        supabaseFetch("share_claims", { query: "?select=id" })
       ]);
       return json(res, 200, {
         users: users?.length || 0,
@@ -3258,7 +3683,8 @@ async function handleSupabase(req, res, url) {
         packs: packs?.length || 0,
         cards: cards?.length || 0,
         playerCards: playerCards?.length || 0,
-        scoreEvents: scoreEvents?.length || 0
+        scoreEvents: scoreEvents?.length || 0,
+        shareClaims: shareClaims?.length || 0
       });
     }
 
@@ -3331,7 +3757,7 @@ async function handle(req, res) {
         seriesRewards: {},
         milestoneRewards: { score: {}, packs: {} },
         challengeState: {},
-        effectState: {}
+        effectState: initialEffectState()
       };
       const token = id("tok");
       db.users.push(user);
@@ -3350,17 +3776,18 @@ async function handle(req, res) {
       }
       const token = id("tok");
       recoverDrawChances(user);
+      const rewards = applyDailyLoginReward(user);
       db.sessions[token] = user.id;
       record(db, { type: "login", userId: user.id });
       await writeDb(db);
-      return json(res, 200, { token, user: userView(user, db) });
+      return json(res, 200, { token, user: userView(user, db), rewards });
     }
 
     if (req.method === "GET" && url.pathname === "/api/profile") {
       const user = currentUser(req, db);
       if (!user) return json(res, 401, { message: "请先登录" });
       const recovered = recoverDrawChances(user);
-      const rewards = [...applyDailyTasks(user, db), ...applyComboRewards(user), ...applyMilestoneRewards(user)];
+      const rewards = [...applyDailyLoginReward(user), ...applyDailyTasks(user, db), ...applyComboRewards(user), ...applyMilestoneRewards(user)];
       if (recovered || rewards.length) await writeDb(db);
       return json(res, 200, { user: userView(user, db), rewards });
     }
@@ -3431,8 +3858,10 @@ async function handle(req, res) {
       user.drawChances -= 1;
       const pack = createPendingPack(user);
       insertLocalPackStart(db, user, pack);
+      record(db, packOpenEvent(user, pack));
+      const rewards = applyDailyTasks(user, db);
       await writeDb(db);
-      return json(res, 200, { pack: packView(pack), pending: false, user: userView(user, db) });
+      return json(res, 200, { pack: packView(pack), pending: false, rewards, user: userView(user, db) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/draw/submit") {
@@ -3520,7 +3949,7 @@ async function handle(req, res) {
       db.shares.push(share);
       record(db, { type: "share_create", userId: user.id, shareId: share.id, scene });
       await writeDb(db);
-      return json(res, 200, { share, shareUrl: `../frontend/share.html?shareId=${share.id}` });
+      return json(res, 200, { share, shareUrl: sharePublicUrl(share.id, share.scene) });
     }
 
     if (req.method === "POST" && url.pathname === "/api/share/visit") {
@@ -3546,7 +3975,52 @@ async function handle(req, res) {
       return json(res, 200, { share, owner: { nickname: owner.nickname }, reward, taskRewards: rewards });
     }
 
+    if (req.method === "POST" && url.pathname === "/api/share/claim") {
+      const visitor = currentUser(req, db);
+      if (!visitor) return json(res, 401, { message: "请先登录后再蹭包" });
+      const body = await parseBody(req);
+      const share = db.shares.find(item => item.id === body.shareId);
+      if (!share) return json(res, 404, { message: "分享不存在" });
+      const owner = db.users.find(user => user.id === share.userId);
+      if (!owner) return json(res, 404, { message: "分享者不存在" });
+      recoverDrawChances(owner);
+      recoverDrawChances(visitor);
+      let claim;
+      try {
+        claim = claimSharePack(owner, visitor, share);
+      } catch (error) {
+        return json(res, error.status || 400, { message: error.message });
+      }
+      let claimRecord = null;
+      if (claim.claimed) {
+        claimRecord = shareClaimRecord(share, owner, visitor, claim);
+        db.shareClaims ||= [];
+        db.shareClaims.push(claimRecord);
+        record(db, {
+          type: "share_claim",
+          userId: visitor.id,
+          ownerId: owner.id,
+          shareId: share.id,
+          scene: share.scene,
+          rewarded: true,
+          payload: {
+            ownerReward: claim.ownerReward,
+            visitorReward: claim.visitorReward
+          },
+          createdAt: claimRecord.createdAt
+        });
+      }
+      await writeDb(db);
+      return json(res, 200, {
+        share,
+        owner: { id: owner.id, nickname: owner.nickname },
+        claim: { ...claim, record: claimRecord },
+        user: userView(visitor, db)
+      });
+    }
+
     if (req.method === "GET" && url.pathname === "/api/ranking") {
+      const current = currentUser(req, db);
       const playerRows = [...db.users]
         .sort((a, b) => b.score - a.score)
         .map(user => ({
@@ -3567,7 +4041,7 @@ async function handle(req, res) {
           rank: index + 1,
           ...row
         }));
-      return json(res, 200, { ranking });
+      return json(res, 200, { ranking: markCurrentRanking(ranking, current?.id) });
     }
 
     if (req.method === "GET" && url.pathname === "/api/stats") {
@@ -3579,7 +4053,8 @@ async function handle(req, res) {
         packs: db.packRecords.length,
         cards: db.cards.length,
         playerCards: db.playerCards.length,
-        scoreEvents: db.scoreEvents.length
+        scoreEvents: db.scoreEvents.length,
+        shareClaims: (db.shareClaims || []).length
       });
     }
 

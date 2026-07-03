@@ -8,19 +8,19 @@
   </head>
   <body class="poster-body">
     <main class="poster-app">
-      <section class="campaign-poster">
-        <div class="poster-badge">光仔卡牌</div>
+      <section id="campaignPoster" class="campaign-poster poster-invite">
+        <div id="posterBadge" class="poster-badge">光仔卡牌 · 游戏入口</div>
         <div class="rift"></div>
-        <h1>名场面宇宙<br />正在失控</h1>
-        <h2>抽卡 · 收集 · 分享领奖</h2>
-        <p class="poster-copy">
-          拾起玩家社区的高光、冥场面与经典瞬间。扫描二维码，进入名场面之殿，开启你的第一包记忆晶核。
+        <h1 id="posterTitle">名场面之殿<br />正在开启</h1>
+        <h2 id="posterSubtitle">扫码入场 · 好友蹭包</h2>
+        <p id="posterCopy" class="poster-copy">
+          拾起玩家社区的高光、冥场面与经典瞬间。扫码进入游戏，和好友一起开包领奖。
         </p>
         <div class="qr-panel">
           <img id="qrImage" alt="游戏入口二维码" />
         </div>
         <strong class="scan-text">扫描二维码</strong>
-        <p class="poster-slogan">化身拾忆者，收集崩坏前的每一个名场面</p>
+        <p id="posterSlogan" class="poster-slogan">化身拾忆者，收集崩坏前的每一个名场面</p>
       </section>
 
       <section class="poster-tools panel">
@@ -32,6 +32,7 @@
         </p>
       </section>
     </main>
-    <script src="./poster.js"></script>
+    <script src="./share-templates.js?v=20260703-p2-share"></script>
+    <script src="./poster.js?v=20260703-p2-share"></script>
   </body>
 </html>

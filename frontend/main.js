@@ -1,4 +1,5 @@
 const API = "";
+const PENDING_SHARE_KEY = "gz_pending_share_id";
 
 const state = {
   token: localStorage.getItem("gz_token") || "",
@@ -159,10 +160,31 @@ function cardMeta(card) {
 function renderGameTabs(targetSelector, activeGame, handlerName) {
   const games = state.games.length ? state.games : [...new Set(state.cards.map(gameOf))];
   const active = games.includes(activeGame) ? activeGame : games[0] || "";
-  $(targetSelector).innerHTML = games.map(game => `
-    <button class="game-tab ${game === active ? "active" : ""}" onclick="${handlerName}('${game}')">${game}</button>
-  `).join("");
+  const target = $(targetSelector);
+  const scrollerId = `${target.id}Scroller`;
+  target.innerHTML = `
+    <button class="game-tabs-nav" type="button" aria-label="向左滑动分类" onclick="scrollGameTabs('${scrollerId}', -1)">‹</button>
+    <div id="${scrollerId}" class="game-tabs-track">
+      ${games.map(game => `
+        <button class="game-tab ${game === active ? "active" : ""}" onclick="${handlerName}('${game}')">${game}</button>
+      `).join("")}
+    </div>
+    <button class="game-tabs-nav" type="button" aria-label="向右滑动分类" onclick="scrollGameTabs('${scrollerId}', 1)">›</button>
+  `;
+  requestAnimationFrame(() => {
+    const activeTab = target.querySelector(".game-tab.active");
+    activeTab?.scrollIntoView({ block: "nearest", inline: "center" });
+  });
   return active;
+}
+
+function scrollGameTabs(scrollerId, direction) {
+  const scroller = document.getElementById(scrollerId);
+  if (!scroller) return;
+  scroller.scrollBy({
+    left: direction * Math.max(140, scroller.clientWidth * 0.72),
+    behavior: "smooth"
+  });
 }
 
 function selectAlbumGame(game) {
@@ -230,6 +252,62 @@ function rewardHtml(rewards = []) {
       ${rewards.map(text => `<p>${text}</p>`).join("")}
     </div>
   `;
+}
+
+function showRewardModal(rewards = []) {
+  if (!rewards.length) return;
+  $("#modalContent").innerHTML = rewardHtml(rewards);
+  $("#modal").classList.remove("hidden");
+}
+
+function rewardSummary(reward = {}) {
+  return [
+    reward.drawChances ? `${reward.drawChances} 次抽卡机会` : "",
+    reward.fragments ? `${reward.fragments} 碎片` : ""
+  ].filter(Boolean).join(" + ") || "奖励";
+}
+
+function rememberPendingShareFromUrl() {
+  const shareId = new URLSearchParams(window.location.search).get("shareId");
+  if (shareId) localStorage.setItem(PENDING_SHARE_KEY, shareId);
+}
+
+async function claimSharePack(shareId) {
+  const data = await request("/api/share/claim", {
+    method: "POST",
+    body: JSON.stringify({ shareId })
+  });
+  state.user = data.user;
+  await loadChallenge();
+  hydratePendingPack();
+  render();
+  const visitorReward = rewardSummary(data.claim?.visitorReward);
+  const ownerReward = rewardSummary(data.claim?.ownerReward);
+  const detail = data.claim?.claimed
+    ? `你获得 ${visitorReward}，${data.owner.nickname} 获得 ${ownerReward}。`
+    : data.claim?.message || "今日已蹭过这个包。";
+  $("#modalContent").innerHTML = `
+    <div class="reward-list">
+      <strong>${data.claim?.message || "好友蹭包"}</strong>
+      <p>${detail}</p>
+    </div>
+  `;
+  $("#modal").classList.remove("hidden");
+  return data;
+}
+
+async function claimPendingShare() {
+  const shareId = localStorage.getItem(PENDING_SHARE_KEY);
+  if (!state.token || !shareId) return false;
+  try {
+    await claimSharePack(shareId);
+    localStorage.removeItem(PENDING_SHARE_KEY);
+    return true;
+  } catch (error) {
+    localStorage.removeItem(PENDING_SHARE_KEY);
+    toast(error.message);
+    return false;
+  }
 }
 
 function cardFace(card, owned = true) {
@@ -372,41 +450,54 @@ function showPackResult(result, rewards = []) {
   $("#modal").classList.remove("hidden");
 }
 
+function shareTemplate(scene) {
+  return window.getShareTemplate ? window.getShareTemplate(scene) : { key: scene || "invite" };
+}
+
 function showSharePoster(scene, shareId) {
-  const sceneText = {
-    invite: "邀请好友来收集名场面",
-    rank: "晒出我的排行榜战绩",
-    card: "炫耀刚抽到的稀有卡"
-  }[scene] || "分享光仔卡牌";
-  const shareUrl = shareLink(shareId);
+  const template = shareTemplate(scene);
+  const shareUrl = shareLink(shareId, template.key);
   $("#modalContent").innerHTML = `
-    <div class="share-card-preview">
-      <p class="eyebrow">分享卡片预览</p>
-      <h3>${sceneText}</h3>
-      <div class="share-mini-card">
-        <span>光仔卡牌</span>
-        <strong>名场面召集令</strong>
+    <div class="share-card-preview share-card-${template.key}">
+      <p class="eyebrow">${template.eyebrow}</p>
+      <h3>${template.headline}</h3>
+      <div class="share-mini-card share-mini-scene-${template.key}">
+        <span>${template.miniMeta}</span>
+        <strong>${template.miniTitle}</strong>
       </div>
-      <p>我在光仔卡牌里打开了名场面之殿，来一起抽一包。</p>
+      <p>${template.body}</p>
+      <b class="share-template-label">${template.label}</b>
       <small>分享码：${shareId}</small>
     </div>
     <p class="message">点击立即转发会调用手机系统分享面板。好友打开链接后，会记录一次分享跳转并发放奖励。</p>
     <div class="share-actions">
-      <button class="primary" onclick="nativeShare('${shareId}', '${scene}')">立即转发给好友</button>
-      <button class="secondary" onclick="openPoster('${shareId}')">生成二维码海报</button>
-      <button class="secondary" onclick="copyShareLink('${shareId}')">复制分享链接</button>
+      <button class="primary" onclick="nativeShare('${shareId}', '${template.key}')">立即转发给好友</button>
+      <button class="secondary" onclick="openPoster('${shareId}', '${template.key}')">生成二维码海报</button>
+      <button class="secondary" onclick="copyShareLink('${shareId}', '${template.key}')">复制分享链接</button>
     </div>
     <p class="share-link-text">${shareUrl}</p>
   `;
   $("#modal").classList.remove("hidden");
 }
 
-function shareLink(shareId) {
-  return new URL(`./share.html?shareId=${encodeURIComponent(shareId)}`, window.location.href).href;
+function shareLink(shareId, scene = "invite") {
+  const template = shareTemplate(scene);
+  const url = new URL("./share.html", window.location.href);
+  url.searchParams.set("shareId", shareId);
+  url.searchParams.set("scene", template.key);
+  return url.href;
 }
 
-async function copyShareLink(shareId) {
-  const url = shareLink(shareId);
+function posterLink(shareId, scene = "invite") {
+  const template = shareTemplate(scene);
+  const url = new URL("./poster.html", window.location.href);
+  url.searchParams.set("shareId", shareId);
+  url.searchParams.set("scene", template.key);
+  return url.href;
+}
+
+async function copyShareLink(shareId, scene = "invite") {
+  const url = shareLink(shareId, scene);
   try {
     await navigator.clipboard.writeText(url);
     toast("分享链接已复制，可以粘贴发给好友。");
@@ -416,15 +507,11 @@ async function copyShareLink(shareId) {
 }
 
 async function nativeShare(shareId, scene = "invite") {
-  const title = {
-    invite: "来光仔卡牌收集名场面",
-    rank: "我在光仔卡牌冲榜了",
-    card: "我抽到了光仔卡牌名场面"
-  }[scene] || "光仔卡牌";
-  const url = shareLink(shareId);
+  const template = shareTemplate(scene);
+  const url = shareLink(shareId, template.key);
   const payload = {
-    title,
-    text: "推开名场面之殿，开一枚记忆晶核，看看你能捞回哪个游戏瞬间。",
+    title: template.nativeTitle,
+    text: template.nativeText,
     url
   };
   if (navigator.share) {
@@ -435,7 +522,7 @@ async function nativeShare(shareId, scene = "invite") {
       if (error?.name === "AbortError") return;
     }
   }
-  await copyShareLink(shareId);
+  await copyShareLink(shareId, template.key);
 }
 
 function showHelpGuide() {
@@ -506,6 +593,7 @@ async function loadProfile() {
   await loadChallenge();
   hydratePendingPack();
   render();
+  return data.rewards || [];
 }
 
 async function loadChallenge() {
@@ -593,7 +681,7 @@ function renderChallenge() {
 function renderTasks() {
   const tasks = state.user.tasks || [];
   $("#taskList").innerHTML = tasks.map(task => {
-    const percent = Math.round((task.progress / task.target) * 100);
+    const percent = Math.min(100, Math.round((task.progress / task.target) * 100));
     return `
       <div class="task-row ${task.claimed ? "done" : ""}">
         <div>
@@ -756,9 +844,9 @@ async function loadRanking() {
   const data = await request("/api/ranking");
   const rows = data.ranking.length ? data.ranking : [{ rank: 1, nickname: "暂无玩家", score: 0, collected: 0, total: state.cards.length }];
   $("#rankingList").innerHTML = rows.map(row => `
-    <div class="rank-row">
+    <div class="rank-row ${row.current || row.userId === state.user?.id ? "current" : ""}">
       <b>#${row.rank}</b>
-      <span>${row.nickname}${row.player ? "（玩家）" : ""}<br><small>${row.collected}/${row.total} 已收集</small></span>
+      <span>${row.nickname}${row.current || row.userId === state.user?.id ? "（我）" : row.player ? "（玩家）" : ""}<br><small>${row.collected}/${row.total} 已收集</small></span>
       <strong>${row.score}</strong>
     </div>
   `).join("");
@@ -847,7 +935,7 @@ async function shareScene(scene) {
       method: "POST",
       body: JSON.stringify({ scene })
     });
-    showSharePoster(scene, data.share.id);
+    showSharePoster(data.share.scene || scene, data.share.id);
   } catch (error) {
     toast(error.message);
   }
@@ -860,6 +948,7 @@ window.showCardDetail = showCardDetail;
 window.showPage = showPage;
 window.selectAlbumGame = selectAlbumGame;
 window.selectExchangeGame = selectExchangeGame;
+window.scrollGameTabs = scrollGameTabs;
 window.toggleHandCard = toggleHandCard;
 window.chooseChallenge = chooseChallenge;
 window.nextTourStep = nextTourStep;
@@ -867,11 +956,11 @@ window.finishTour = finishTour;
 window.shareScene = shareScene;
 window.nativeShare = nativeShare;
 window.copyShareLink = copyShareLink;
-window.goShare = shareId => {
-  window.location.href = `./share.html?shareId=${encodeURIComponent(shareId)}`;
+window.goShare = (shareId, scene = "invite") => {
+  window.location.href = shareLink(shareId, scene);
 };
-window.openPoster = shareId => {
-  window.location.href = `./poster.html?shareId=${encodeURIComponent(shareId)}`;
+window.openPoster = (shareId, scene = "invite") => {
+  window.location.href = posterLink(shareId, scene);
 };
 
 async function submitAuth() {
@@ -889,6 +978,8 @@ async function submitAuth() {
     hydratePendingPack();
     render();
     maybeStartOnboarding();
+    const claimed = await claimPendingShare();
+    if (!claimed) showRewardModal(data.rewards || []);
   } catch (error) {
     $("#authMessage").textContent = error.message;
   }
@@ -965,7 +1056,7 @@ function bind() {
         method: "POST",
         body: JSON.stringify({ scene: "invite" })
       });
-      window.location.href = `./poster.html?shareId=${encodeURIComponent(data.share.id)}`;
+      window.location.href = posterLink(data.share.id, data.share.scene || "invite");
     } catch (error) {
       toast(error.message);
     }
@@ -991,10 +1082,13 @@ function bind() {
 async function init() {
   bind();
   setAuthMode("login");
+  rememberPendingShareFromUrl();
   await loadCards();
   if (state.token) {
     try {
-      await loadProfile();
+      const rewards = await loadProfile();
+      const claimed = await claimPendingShare();
+      if (!claimed) showRewardModal(rewards);
       maybeStartOnboarding();
     } catch {
       localStorage.removeItem("gz_token");

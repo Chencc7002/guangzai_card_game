@@ -9,7 +9,7 @@
 - 后端：Node.js 原生 HTTP 服务
 - 数据：MySQL，未配置时使用本地 `backend/db.json`
 - 缓存：Redis，可选，用于登录态和排行榜缓存
-- 分享：生成二维码海报，二维码指向分享页，进入分享页后记录跳转并给奖励
+- 分享：生成二维码海报，二维码指向分享页，进入分享页后记录跳转；登录用户可蹭好友包，双方按每日限次领奖
 
 ## 本地运行
 
@@ -26,6 +26,13 @@ http://localhost:8787
 ```
 
 ## MySQL + Redis 配置
+
+正式部署配置详见 [docs/deployment-mysql-redis.md](docs/deployment-mysql-redis.md)。项目已提供：
+
+- [deploy/env.production.example](deploy/env.production.example)：生产 `.env` 模板
+- [deploy/mysql-init.sql](deploy/mysql-init.sql)：创建正式库和数据库用户
+- [deploy/redis-production.conf](deploy/redis-production.conf)：Redis 单机配置样例
+- [ecosystem.config.cjs](ecosystem.config.cjs)：PM2 启动配置
 
 1. 创建 MySQL 数据库表：
 
@@ -59,6 +66,8 @@ REDIS_URL=redis://127.0.0.1:6379
 
 只要 `.env` 里配置了 `MYSQL_HOST`、`MYSQL_USER`、`MYSQL_DATABASE`，后端就会优先使用 MySQL，不再走 Supabase 或 `db.json`。
 
+如果 `PUBLIC_BASE_URL` 配成公网地址，`/api/share/create` 返回的分享链接也会使用正式公网地址，方便二维码海报和外部分享。
+
 ## 腾讯云部署思路
 
 服务器安装 Node.js 后：
@@ -89,12 +98,13 @@ pm2 save
 - 每一次抽卡写入 `draw_records`
 - 卡册展示
 - 碎片兑换
+- 每日首次登录奖励 3 次抽卡
 - 今日任务
 - 系列完成奖励
-- 排行榜
+- 排行榜和自身排名高亮
 - 分享邀请 / 分享排名 / 分享稀有卡
 - 二维码海报
-- 分享页跳转检测
+- 分享页跳转检测和好友蹭包双方奖励
 
 ## 重要说明
 

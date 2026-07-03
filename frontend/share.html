@@ -8,18 +8,22 @@
   </head>
   <body>
     <main class="app">
-      <section class="share-page panel">
-        <p class="eyebrow">分享跳转检测</p>
+      <section id="sharePage" class="share-page panel share-page-invite">
+        <p id="shareEyebrow" class="eyebrow">名场面召集令</p>
         <h1>光仔卡牌</h1>
-        <div class="share-poster">
+        <div id="sharePoster" class="share-poster share-poster-invite">
           <div class="poster-crystal"></div>
-          <h2>来抽一张名场面卡</h2>
+          <span id="shareSceneLabel" class="share-template-label">游戏入口</span>
+          <h2 id="shareHeading">好友喊你来开包</h2>
+          <p id="shareTemplateCopy" class="share-template-copy">进入游戏后可蹭好友的包，双方都有每日奖励机会。</p>
           <p id="shareText">正在读取分享信息...</p>
         </div>
         <p id="rewardText" class="message"></p>
-        <a class="primary link-button" href="./index.html">进入游戏</a>
+        <button id="claimShareBtn" class="primary">蹭一下好友的包</button>
+        <a id="enterGameLink" class="secondary link-button" href="./index.html">进入游戏</a>
       </section>
     </main>
-    <script src="./share.js"></script>
+    <script src="./share-templates.js?v=20260703-p2-share"></script>
+    <script src="./share.js?v=20260703-p2-share"></script>
   </body>
 </html>
