@@ -13,6 +13,7 @@ create table if not exists cards (
   fragment int not null default 0,
   price int not null default 0,
   quote varchar(255) not null,
+  image varchar(255) not null default '',
   is_placeholder tinyint(1) not null default 0,
   sort_order int not null default 0,
   created_at datetime(3) not null default current_timestamp(3),

@@ -30,15 +30,24 @@ http://localhost:8787
 - `GET /api/stats` 数据统计
 - `GET /api/users` 查看所有玩家与抽卡记录
 
+## 卡牌配置
+
+- `../data/cards.json` 是当前卡牌主维护源，包含卡牌 ID、名称、游戏、主题、稀有度、文案、图片路径。
+- `../data/combos.json` 是隐藏彩蛋组合维护源，包含组合 ID、卡牌 ID 列表和奖励。
+- 后端启动和 `GET /api/cards` 时会读取 JSON，并把卡牌主数据同步到 `cards` 表。
+- 卡面图片放在 `../frontend/assets/cards/`，在 `data/cards.json` 的 `image` 字段里填写前端可访问路径。
+
 ## 数据迁移
 
 已有 MySQL 环境需要执行：
 
 ```bash
 mysql -u root -p < migrations/20260703_share_claims.sql
+mysql -u root -p < migrations/20260703_card_assets.sql
 ```
 
 新表 `share_claims` 用于记录好友蹭包双方关系和每日防重。
+`20260703_card_assets.sql` 用于给已有 `cards` 表补充 `image` 字段。
 
 ## 正式部署
 
