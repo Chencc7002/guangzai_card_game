@@ -63,6 +63,19 @@ create table if not exists shares (
   created_at timestamptz not null default now()
 );
 
+create table if not exists share_claims (
+  id text primary key,
+  share_id text not null references shares(id) on delete cascade,
+  owner_id text not null references players(id) on delete cascade,
+  visitor_id text not null references players(id) on delete cascade,
+  scene text not null,
+  claim_date date not null,
+  owner_reward jsonb not null default '{}'::jsonb,
+  visitor_reward jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (share_id, visitor_id, claim_date)
+);
+
 create table if not exists draw_records (
   id text primary key,
   player_id text not null references players(id) on delete cascade,
@@ -184,3 +197,6 @@ create index if not exists idx_score_events_created_at on score_events(created_a
 create index if not exists idx_events_type on events(type);
 create index if not exists idx_events_created_at on events(created_at desc);
 create index if not exists idx_shares_player_id on shares(player_id);
+create index if not exists idx_share_claims_owner_id on share_claims(owner_id);
+create index if not exists idx_share_claims_visitor_id on share_claims(visitor_id);
+create index if not exists idx_share_claims_claim_date on share_claims(claim_date);

@@ -914,20 +914,44 @@ button:disabled {
 }
 
 .game-tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
   gap: 8px;
   margin: 12px 0;
+}
+
+.game-tabs-track {
+  display: flex;
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  padding: 2px 0 6px;
   scrollbar-width: none;
 }
 
-.game-tabs::-webkit-scrollbar {
+.game-tabs-track::-webkit-scrollbar {
   display: none;
+}
+
+.game-tabs-nav {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--text);
+  background: rgba(36, 43, 64, 0.92);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .game-tab {
   flex: 0 0 auto;
+  scroll-snap-align: center;
   min-height: 36px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1568,6 +1592,12 @@ button:disabled {
   background: var(--panel);
 }
 
+.rank-row.current {
+  border-color: rgba(245, 193, 93, 0.9);
+  background: rgba(245, 193, 93, 0.14);
+  box-shadow: 0 0 0 1px rgba(245, 193, 93, 0.18), 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
 .rank-row b {
   color: var(--gold);
 }
@@ -1579,6 +1609,7 @@ button:disabled {
   border-radius: 8px;
   padding: 12px;
   background: rgba(245, 193, 93, 0.08);
+  overflow: hidden;
 }
 
 .reward-list p {
@@ -1634,6 +1665,56 @@ button:disabled {
   text-align: center;
 }
 
+.share-card-preview h3,
+.share-card-preview p {
+  position: relative;
+  z-index: 1;
+}
+
+.share-card-preview > p:not(.eyebrow) {
+  margin-bottom: 8px;
+  color: rgba(246, 241, 232, 0.86);
+  line-height: 1.55;
+}
+
+.share-template-label {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  margin: 2px auto 8px;
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #f9e9b9;
+  background: rgba(15, 18, 31, 0.56);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.share-card-invite {
+  border-color: rgba(104, 216, 214, 0.5);
+  background:
+    linear-gradient(135deg, rgba(104,216,214,0.18), rgba(245,193,93,0.13)),
+    rgba(27, 32, 49, 0.92);
+}
+
+.share-card-rank {
+  border-color: rgba(120, 211, 127, 0.54);
+  background:
+    linear-gradient(135deg, rgba(120,211,127,0.16), rgba(245,193,93,0.12)),
+    rgba(24, 36, 40, 0.94);
+}
+
+.share-card-card {
+  border-color: rgba(239, 111, 108, 0.58);
+  background:
+    linear-gradient(135deg, rgba(239,111,108,0.18), rgba(245,193,93,0.14)),
+    rgba(36, 29, 42, 0.94);
+}
+
 .share-actions {
   display: grid;
   gap: 8px;
@@ -1670,6 +1751,27 @@ button:disabled {
     linear-gradient(150deg, rgba(104,216,214,0.92), rgba(245,193,93,0.88) 56%, rgba(239,111,108,0.72)),
     #242b40;
   box-shadow: 0 16px 34px rgba(0,0,0,0.34), inset 0 0 28px rgba(255,255,255,0.2);
+}
+
+.share-mini-scene-invite {
+  border-color: rgba(104, 216, 214, 0.86);
+  background:
+    linear-gradient(150deg, rgba(104,216,214,0.95), rgba(245,193,93,0.86) 58%, rgba(239,111,108,0.62)),
+    #242b40;
+}
+
+.share-mini-scene-rank {
+  border-color: rgba(120, 211, 127, 0.86);
+  background:
+    linear-gradient(150deg, rgba(120,211,127,0.92), rgba(35,66,66,0.9) 48%, rgba(245,193,93,0.84)),
+    #1d272b;
+}
+
+.share-mini-scene-card {
+  border-color: rgba(239, 111, 108, 0.9);
+  background:
+    linear-gradient(150deg, rgba(239,111,108,0.9), rgba(99,68,145,0.88) 48%, rgba(245,193,93,0.88)),
+    #261c2f;
 }
 
 .share-mini-card::before {
@@ -1775,6 +1877,37 @@ button:disabled {
   background: #242b40;
 }
 
+.share-poster h2 {
+  margin: 10px 0 8px;
+}
+
+.share-template-copy {
+  margin: 0 0 12px;
+  color: rgba(246, 241, 232, 0.82);
+  line-height: 1.55;
+}
+
+.share-poster-invite {
+  border-color: rgba(104, 216, 214, 0.52);
+  background:
+    linear-gradient(145deg, rgba(104,216,214,0.2), rgba(245,193,93,0.1)),
+    #202b3a;
+}
+
+.share-poster-rank {
+  border-color: rgba(120, 211, 127, 0.56);
+  background:
+    linear-gradient(145deg, rgba(120,211,127,0.18), rgba(245,193,93,0.09)),
+    #1f2b28;
+}
+
+.share-poster-card {
+  border-color: rgba(239, 111, 108, 0.6);
+  background:
+    linear-gradient(145deg, rgba(239,111,108,0.18), rgba(245,193,93,0.1)),
+    #2b2230;
+}
+
 .poster-crystal {
   width: 118px;
   height: 166px;
@@ -1817,6 +1950,26 @@ button:disabled {
     radial-gradient(circle at 74% 68%, rgba(239, 111, 108, 0.2), transparent 24%),
     linear-gradient(180deg, rgba(32, 41, 70, 0.96), rgba(9, 11, 18, 0.98));
   box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.campaign-poster.poster-rank {
+  background:
+    linear-gradient(120deg, transparent 0%, transparent 48%, rgba(255,255,255,0.09) 49%, rgba(255,255,255,0.09) 50%, transparent 51%),
+    linear-gradient(180deg, rgba(31, 58, 53, 0.96), rgba(8, 13, 15, 0.98));
+}
+
+.campaign-poster.poster-rank h2 {
+  color: #7ee08a;
+}
+
+.campaign-poster.poster-card {
+  background:
+    linear-gradient(120deg, transparent 0%, transparent 48%, rgba(255,255,255,0.11) 49%, rgba(255,255,255,0.11) 50%, transparent 51%),
+    linear-gradient(180deg, rgba(60, 34, 50, 0.98), rgba(11, 8, 14, 0.98));
+}
+
+.campaign-poster.poster-card h2 {
+  color: #ff928c;
 }
 
 .campaign-poster::before,

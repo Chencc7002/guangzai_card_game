@@ -12,6 +12,8 @@
 - 数据库：MySQL
 - 缓存：Redis
 - 建表文件：mysql-schema.sql
+- 正式配置说明：docs/deployment-mysql-redis.md
+- 生产环境样例：deploy/env.production.example
 - 启动命令：npm start
 
 
@@ -288,7 +290,7 @@ Linux 服务器常用命令：
 正式运行建议使用 pm2：
 
    sudo npm install -g pm2
-   pm2 start backend/server.js --name guangzai-card-game
+   pm2 start ecosystem.config.cjs
    pm2 save
 
 查看运行状态：
@@ -364,7 +366,8 @@ MySQL 保存长期数据：
 Redis 作为缓存：
 
 - session:tok_xxx：登录态缓存
-- ranking:v1：排行榜缓存
+- ranking:zset:v1：排行榜 ZSet
+- ranking:v2：短期榜单 JSON 缓存
 
 Redis 清空不会丢失核心游戏数据。
 MySQL 才是主数据库。
